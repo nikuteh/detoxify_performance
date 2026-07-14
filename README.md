@@ -1,9 +1,13 @@
 # Detoxify Subreddit Workflow
 
+This project processes Reddit subreddit comment data into Detoxify toxicity
+scores, community-level summaries, and individual-user summaries.
+
 Run commands from the project root:
 
 ```bash
 cd /Users/williamwalsh/Desktop/REU/detoxify_performance
+source .venv/bin/activate
 ```
 
 ## Requirements
@@ -11,259 +15,279 @@ cd /Users/williamwalsh/Desktop/REU/detoxify_performance
 The scripts use Python plus `pandas`, `numpy`, `matplotlib`, `torch`, and
 `detoxify`.
 
-For `.zst` files, `format_reddit_comments_zst.py` uses either the Python package
-`zstandard` or the command-line tool `zstd`.
+For `.zst` files, `scripts/format_reddit_comments_zst.py` uses either the
+Python package `zstandard` or the command-line tool `zstd`.
 
 ```bash
 pip install pandas numpy matplotlib zstandard torch detoxify
 ```
 
-## File Flow
+## Project Layout
 
-For each subreddit, the workflow is:
+Use one folder per subreddit:
 
 ```text
-comments.zst
-  -> comments.csv
-  -> comments_detoxify_unbiased_predictions.csv
-  -> per-user CSV files
-  -> rankings and plots
+data/subreddits/<Subreddit>/
+  Raw dumps, converted comments CSVs, Detoxify prediction CSVs, and per-user CSVs.
+
+visualizations/subreddits/<Subreddit>/
+  Generated plot images.
+
+scripts/
+  format_reddit_comments_zst.py
+  run_detoxify_on_csv.py
+  community/processing/
+  community/visualization/
+  users/visualization/
 ```
 
-The ranking and user-plot scripts require Detoxify score columns:
+In the examples below:
+
+```text
+<Subreddit>     Folder-safe subreddit name, such as My_Subreddit.
+<comments_base> Base filename for the comment dump, such as my_subreddit_comments.
+<Username>      Reddit username to inspect individually.
+```
+
+## Data Flow
+
+For each subreddit, the full workflow is:
+
+```text
+raw comment dump or plain-text source
+  -> data/subreddits/<Subreddit>/<comments_base>.csv
+  -> data/subreddits/<Subreddit>/<comments_base>_detoxify_unbiased_predictions.csv
+  -> community-level CSV summaries and PNG visualizations
+  -> data/subreddits/<Subreddit>/users/*.csv
+  -> individual-user CSV summaries and PNG visualizations
+```
+
+The Detoxify prediction CSV should contain these score columns:
 
 ```text
 toxicity,severe_toxicity,obscene,identity_attack,insult,threat,sexual_explicit
 ```
 
-The repo already has Asahi Detoxify predictions. For a new subreddit, run
-`run_detoxify_on_csv.py` after creating the plain comments CSV.
+## 1. Prepare The Data
 
-## Asahi Linux
-
-Convert the Reddit `.zst` comments dump to the Asahi-style CSV:
+Create the subreddit folders:
 
 ```bash
-python format_reddit_comments_zst.py \
-  asahi_linux_reddit/subreddits25/AsahiLinux_comments.zst \
-  --output asahi_linux_reddit/subreddits25/AsahiLinux_comments.csv
+mkdir -p data/subreddits/<Subreddit>
+mkdir -p visualizations/subreddits/<Subreddit>
 ```
 
-Run Detoxify on the comments CSV:
+If your raw source is a Reddit comments `.zst` dump containing newline-delimited
+JSON, convert it to the project CSV format:
 
 ```bash
-python run_detoxify_on_csv.py \
-  asahi_linux_reddit/subreddits25/AsahiLinux_comments.csv \
-  --output asahi_linux_reddit/subreddits25/AsahiLinux_comments_detoxify_unbiased_predictions.csv
+python scripts/format_reddit_comments_zst.py \
+  data/subreddits/<Subreddit>/<comments_base>.zst \
+  --output data/subreddits/<Subreddit>/<comments_base>.csv
 ```
 
-Plot overall subreddit toxicity over time as a scatter plot:
+The converted comments CSV has this shape:
 
-```bash
-python plot_toxicity_over_time.py \
-  asahi_linux_reddit/subreddits25/AsahiLinux_comments_detoxify_unbiased_predictions.csv \
-  --output subreddits/asahi_linux/asahi_linux_toxicity_scatter_over_time.png \
-  --title "asahi_linux Toxicity Scatter Over Time" \
-  --scatter-only \
-  --dot-size 20 \
-  --dot-alpha 0.7
+```text
+Subreddit,username,timestamp,comment_text,parent_id
 ```
 
-Plot the number of posts/comments over time:
+If your source is already plain text or another CSV format, convert it into that
+same CSV shape before running Detoxify. The important columns for later scripts
+are `username`, `timestamp`, and `comment_text`.
+
+For a quick conversion test:
 
 ```bash
-python plot_posts_over_time.py \
-  asahi_linux_reddit/subreddits25/AsahiLinux_comments_detoxify_unbiased_predictions.csv \
-  --output subreddits/asahi_linux/asahi_linux_posts_over_time.png \
-  --title "asahi_linux Posts Over Time" \
-  --ylabel "Comments per month" \
-  --time-bin MS
+python scripts/format_reddit_comments_zst.py \
+  data/subreddits/<Subreddit>/<comments_base>.zst \
+  --limit 100
 ```
 
-Compute the percent of comments above `0.5` for each toxicity type:
+## 2. Run Detoxify
+
+Score every comment and write a predictions CSV:
 
 ```bash
-python compute_toxicity_percentages.py \
-  asahi_linux_reddit/subreddits25/AsahiLinux_comments_detoxify_unbiased_predictions.csv \
-  --output asahi_linux_reddit/subreddits25/AsahiLinux_toxicity_percentages.csv \
-  --plot-output asahi_linux_reddit/subreddits25/AsahiLinux_toxicity_percentages.png
+python scripts/run_detoxify_on_csv.py \
+  data/subreddits/<Subreddit>/<comments_base>.csv \
+  --output data/subreddits/<Subreddit>/<comments_base>_detoxify_unbiased_predictions.csv
 ```
 
-Split Detoxify predictions into one CSV per active user:
+For a quick Detoxify test:
 
 ```bash
-python split_csv_by_active_users.py \
-  asahi_linux_reddit/subreddits25/AsahiLinux_comments_detoxify_unbiased_predictions.csv \
-  subreddits/asahi_linux \
-  --min-comments 100
+python scripts/run_detoxify_on_csv.py \
+  data/subreddits/<Subreddit>/<comments_base>.csv \
+  --limit 100
 ```
 
-Rank the top 10 users by average toxicity:
+Use a smaller batch size if your computer runs out of memory:
 
 ```bash
-python rank_users_by_average_toxicity.py \
-  subreddits/asahi_linux \
-  --output subreddits/asahi_linux/top_10_average_toxicity.csv \
-  --top-n 10
+python scripts/run_detoxify_on_csv.py \
+  data/subreddits/<Subreddit>/<comments_base>.csv \
+  --batch-size 16
 ```
 
-Plot average toxicity by post/comment number for the top 10 users:
+## 3. Community-Level Processing
 
-```bash
-python plot_top_toxic_users_average_toxicity.py \
-  subreddits/asahi_linux \
-  --output subreddits/asahi_linux/top_10_average_toxicity_per_post_scatter.png \
-  --top-n 10
+Set the predictions path once mentally as:
+
+```text
+data/subreddits/<Subreddit>/<comments_base>_detoxify_unbiased_predictions.csv
 ```
 
-Plot average Detoxify scores by post/comment number for the top 100 users:
+Compute the percent of comments above a toxicity threshold for each Detoxify
+score type:
 
 ```bash
-python plot_top_users_toxicity_by_post_number.py \
-  asahi_linux_reddit/subreddits25/AsahiLinux_comments_detoxify_unbiased_predictions.csv \
-  --output subreddits/asahi_linux/asahi_linux_top_100_users_toxicity_by_post_number.png \
-  --summary-output subreddits/asahi_linux/asahi_linux_top_100_users_toxicity_by_post_number.csv \
-  --title "asahi_linux Top 100 Users: Average Toxicity by Post Number" \
-  --top-n 100
-```
-
-Plot one user's toxicity percentages by type:
-
-```bash
-python plot_user_toxicity_over_time.py \
-  intulor \
-  subreddits/asahi_linux/users
-```
-
-You can also pass a user CSV directly:
-
-```bash
-python plot_user_toxicity_over_time.py \
-  subreddits/asahi_linux/users/intulor.csv
-```
-
-## Ramen
-
-Convert the Ramen `.zst` comments dump to CSV:
-
-```bash
-python format_reddit_comments_zst.py \
-  subreddits/ramen/ramen_comments.zst \
-  --output subreddits/ramen/ramen_comments.csv
-```
-
-Run Detoxify on the comments CSV:
-
-```bash
-python run_detoxify_on_csv.py \
-  subreddits/ramen/ramen_comments.csv \
-  --output subreddits/ramen/ramen_comments_detoxify_unbiased_predictions.csv
-```
-
-Then plot overall subreddit toxicity over time:
-
-```bash
-python plot_toxicity_over_time.py \
-  subreddits/ramen/ramen_comments_detoxify_unbiased_predictions.csv \
-  --output subreddits/ramen/ramen_toxicity_over_time.png \
-  --title "ramen Toxicity Over Time"
-```
-
-Compute the percent of comments above `0.5` for each toxicity type:
-
-```bash
-python compute_toxicity_percentages.py \
-  subreddits/ramen/ramen_comments_detoxify_unbiased_predictions.csv \
-  --output subreddits/ramen/ramen_toxicity_percentages.csv \
-  --plot-output subreddits/ramen/ramen_toxicity_percentages.png
-```
-
-Split Detoxify predictions into one CSV per active user:
-
-```bash
-python split_csv_by_active_users.py \
-  subreddits/ramen/ramen_comments_detoxify_unbiased_predictions.csv \
-  subreddits/ramen/users \
-  --min-comments 100
-```
-
-Rank the top 10 users by average toxicity:
-
-```bash
-python rank_users_by_average_toxicity.py \
-  subreddits/ramen/users \
-  --output subreddits/ramen/users/top_10_average_toxicity.csv \
-  --top-n 10
-```
-
-Plot average toxicity by post/comment number for the top 10 users:
-
-```bash
-python plot_top_toxic_users_average_toxicity.py \
-  subreddits/ramen/users \
-  --output subreddits/ramen/users/top_10_average_toxicity_per_post_scatter.png \
-  --top-n 10
-```
-
-Plot one user's toxicity percentages by type:
-
-```bash
-python plot_user_toxicity_over_time.py \
-  USERNAME \
-  subreddits/ramen/users
-```
-
-## Useful Options
-
-Quickly test a `.zst` conversion with only the first few comments:
-
-```bash
-python format_reddit_comments_zst.py subreddits/ramen/ramen_comments.zst --limit 100
-```
-
-Quickly test Detoxify on only the first 100 comments:
-
-```bash
-python run_detoxify_on_csv.py subreddits/ramen/ramen_comments.csv --limit 100
-```
-
-Use a smaller Detoxify batch size if your computer runs out of memory:
-
-```bash
-python run_detoxify_on_csv.py subreddits/ramen/ramen_comments.csv --batch-size 16
+python scripts/community/processing/compute_toxicity_percentages.py \
+  data/subreddits/<Subreddit>/<comments_base>_detoxify_unbiased_predictions.csv \
+  --output data/subreddits/<Subreddit>/<comments_base>_toxicity_percentages.csv \
+  --plot-output visualizations/subreddits/<Subreddit>/<comments_base>_toxicity_percentages.png
 ```
 
 Use a stricter toxicity cutoff:
 
 ```bash
-python compute_toxicity_percentages.py \
-  INPUT_predictions.csv \
+python scripts/community/processing/compute_toxicity_percentages.py \
+  data/subreddits/<Subreddit>/<comments_base>_detoxify_unbiased_predictions.csv \
   --threshold 0.8 \
-  --plot-output toxicity_percentages_threshold_0.8.png
+  --plot-output visualizations/subreddits/<Subreddit>/<comments_base>_toxicity_percentages_threshold_0.8.png
+```
+
+Split the prediction CSV into one CSV per active user:
+
+```bash
+python scripts/community/processing/split_csv_by_active_users.py \
+  data/subreddits/<Subreddit>/<comments_base>_detoxify_unbiased_predictions.csv \
+  data/subreddits/<Subreddit>/users \
+  --min-comments 100
 ```
 
 Use a different active-user cutoff:
 
 ```bash
-python split_csv_by_active_users.py INPUT.csv OUTPUT_DIR --min-comments 50
+python scripts/community/processing/split_csv_by_active_users.py \
+  data/subreddits/<Subreddit>/<comments_base>_detoxify_unbiased_predictions.csv \
+  data/subreddits/<Subreddit>/users \
+  --min-comments 50
 ```
 
-Rank more than 10 users:
+Rank users by average toxicity:
 
 ```bash
-python rank_users_by_average_toxicity.py subreddits/ramen/users --top-n 25
+python scripts/community/processing/rank_users_by_average_toxicity.py \
+  data/subreddits/<Subreddit>/users \
+  --output data/subreddits/<Subreddit>/users/top_10_average_toxicity.csv \
+  --top-n 10
 ```
 
-Plot top-user averages where at least 5 of the top users have that post number:
+Rank more users:
 
 ```bash
-python plot_top_toxic_users_average_toxicity.py \
-  subreddits/ramen/users \
-  --min-users-per-post 5
+python scripts/community/processing/rank_users_by_average_toxicity.py \
+  data/subreddits/<Subreddit>/users \
+  --top-n 25
+```
+
+## 4. Community-Level Visualizations
+
+Plot overall toxicity over time:
+
+```bash
+python scripts/community/visualization/plot_toxicity_over_time.py \
+  data/subreddits/<Subreddit>/<comments_base>_detoxify_unbiased_predictions.csv \
+  --output visualizations/subreddits/<Subreddit>/<comments_base>_toxicity_over_time.png \
+  --title "<Subreddit> Toxicity Over Time"
+```
+
+Plot toxicity over time as individual comment dots:
+
+```bash
+python scripts/community/visualization/plot_toxicity_over_time.py \
+  data/subreddits/<Subreddit>/<comments_base>_detoxify_unbiased_predictions.csv \
+  --output visualizations/subreddits/<Subreddit>/<comments_base>_toxicity_scatter_over_time.png \
+  --title "<Subreddit> Toxicity Scatter Over Time" \
+  --scatter-only \
+  --dot-size 20 \
+  --dot-alpha 0.7
 ```
 
 Change the over-time averaging interval:
 
 ```bash
-python plot_toxicity_over_time.py INPUT_predictions.csv --time-bin QS
+python scripts/community/visualization/plot_toxicity_over_time.py \
+  data/subreddits/<Subreddit>/<comments_base>_detoxify_unbiased_predictions.csv \
+  --time-bin QS
+```
+
+Plot comment volume over time:
+
+```bash
+python scripts/community/visualization/plot_posts_over_time.py \
+  data/subreddits/<Subreddit>/<comments_base>_detoxify_unbiased_predictions.csv \
+  --output visualizations/subreddits/<Subreddit>/<comments_base>_posts_over_time.png \
+  --title "<Subreddit> Comments Over Time" \
+  --ylabel "Comments per month" \
+  --time-bin MS
+```
+
+Plot average toxicity by post/comment number for the top toxic users:
+
+```bash
+python scripts/community/visualization/plot_top_toxic_users_average_toxicity.py \
+  data/subreddits/<Subreddit>/users \
+  --output visualizations/subreddits/<Subreddit>/top_10_average_toxicity_per_post_scatter.png \
+  --top-n 10
+```
+
+Plot only post/comment numbers where at least 5 of the top users contributed:
+
+```bash
+python scripts/community/visualization/plot_top_toxic_users_average_toxicity.py \
+  data/subreddits/<Subreddit>/users \
+  --min-users-per-post 5
+```
+
+Plot average Detoxify scores by post/comment number for the top users in the
+full community CSV:
+
+```bash
+python scripts/community/visualization/plot_top_users_toxicity_by_post_number.py \
+  data/subreddits/<Subreddit>/<comments_base>_detoxify_unbiased_predictions.csv \
+  --output visualizations/subreddits/<Subreddit>/<comments_base>_top_100_users_toxicity_by_post_number.png \
+  --summary-output data/subreddits/<Subreddit>/<comments_base>_top_100_users_toxicity_by_post_number.csv \
+  --title "<Subreddit> Top 100 Users: Average Toxicity by Post Number" \
+  --top-n 100
+```
+
+## 5. Individual-User Processing And Visualization
+
+After splitting users into `data/subreddits/<Subreddit>/users`, plot one user's
+toxicity percentages by type:
+
+```bash
+python scripts/users/visualization/plot_user_toxicity_over_time.py \
+  <Username> \
+  data/subreddits/<Subreddit>/users \
+  --output visualizations/subreddits/<Subreddit>/users/<Username>_toxicity_percentages.png
+```
+
+You can also pass a user CSV directly:
+
+```bash
+python scripts/users/visualization/plot_user_toxicity_over_time.py \
+  data/subreddits/<Subreddit>/users/<Username>.csv
+```
+
+Optionally save the user's percentage summary as CSV:
+
+```bash
+python scripts/users/visualization/plot_user_toxicity_over_time.py \
+  <Username> \
+  data/subreddits/<Subreddit>/users \
+  --summary-output data/subreddits/<Subreddit>/users/<Username>_toxicity_percentages.csv \
+  --output visualizations/subreddits/<Subreddit>/users/<Username>_toxicity_percentages.png
 ```

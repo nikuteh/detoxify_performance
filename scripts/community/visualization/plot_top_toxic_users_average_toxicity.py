@@ -6,6 +6,11 @@ import numpy as np
 import pandas as pd
 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+DATA_SUBREDDITS_DIR = PROJECT_ROOT / "data" / "subreddits"
+VISUALIZATION_SUBREDDITS_DIR = PROJECT_ROOT / "visualizations" / "subreddits"
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description=(
@@ -22,8 +27,7 @@ def parse_args():
         "--output",
         type=Path,
         help=(
-            "Output PNG path. Default: top_10_average_toxicity_scatter.png "
-            "in the input folder."
+            "Output PNG path. Default: inferred from the input folder."
         ),
     )
     parser.add_argument(
@@ -53,6 +57,34 @@ def parse_args():
         help="Only plot post/comment numbers up to this value.",
     )
     return parser.parse_args()
+
+
+def infer_visualization_output(user_csv_folder, filename):
+    try:
+        relative_folder = user_csv_folder.resolve().relative_to(DATA_SUBREDDITS_DIR)
+    except ValueError:
+        return user_csv_folder / filename
+
+    if not relative_folder.parts:
+        return user_csv_folder / filename
+
+    subreddit_name = relative_folder.parts[0]
+    return VISUALIZATION_SUBREDDITS_DIR / subreddit_name / filename
+
+
+def infer_subreddit_name(user_csv_folder):
+    try:
+        relative_folder = user_csv_folder.resolve().relative_to(DATA_SUBREDDITS_DIR)
+    except ValueError:
+        relative_folder = None
+    else:
+        if relative_folder.parts:
+            return relative_folder.parts[0]
+
+    if user_csv_folder.name == "users" and user_csv_folder.parent.name:
+        return user_csv_folder.parent.name
+
+    return user_csv_folder.name
 
 
 def top_users_by_average_toxicity(user_csv_folder, top_n, score_column):
@@ -148,8 +180,9 @@ def main():
     if args.max_post_number is not None and args.max_post_number < 1:
         raise SystemExit("--max-post-number must be at least 1")
 
-    output_png = args.output or (
-        args.user_csv_folder / f"top_{args.top_n}_average_toxicity_per_post_scatter.png"
+    output_png = args.output or infer_visualization_output(
+        args.user_csv_folder,
+        f"top_{args.top_n}_average_toxicity_per_post_scatter.png",
     )
 
     os.environ.setdefault("MPLCONFIGDIR", ".matplotlib_cache")
@@ -235,7 +268,7 @@ def main():
         label=f"Regression ({slope:+.5f} toxicity per post/comment)",
     )
 
-    subreddit_name = args.user_csv_folder.name
+    subreddit_name = infer_subreddit_name(args.user_csv_folder)
     ax.set_title(
         (
             f"{subreddit_name}: Average Toxicity Per Post Number "

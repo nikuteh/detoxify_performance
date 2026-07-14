@@ -16,6 +16,10 @@ TOXICITY_COLUMNS = [
     "sexual_explicit",
 ]
 
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+DATA_SUBREDDITS_DIR = PROJECT_ROOT / "data" / "subreddits"
+VISUALIZATION_SUBREDDITS_DIR = PROJECT_ROOT / "visualizations" / "subreddits"
+
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -90,6 +94,19 @@ def parse_args():
         help="Plot title. Default: inferred from the input CSV filename.",
     )
     return parser.parse_args()
+
+
+def infer_visualization_output(input_csv, filename):
+    try:
+        relative_input = input_csv.resolve().relative_to(DATA_SUBREDDITS_DIR)
+    except ValueError:
+        return input_csv.with_name(filename)
+
+    if not relative_input.parts:
+        return input_csv.with_name(filename)
+
+    subreddit_name = relative_input.parts[0]
+    return VISUALIZATION_SUBREDDITS_DIR / subreddit_name / filename
 
 
 def required_score_columns(columns):
@@ -292,8 +309,9 @@ def main():
     if per_post.empty:
         raise SystemExit("No post/comment numbers met the plotting filters")
 
-    output_png = args.output or args.input_csv.with_name(
-        f"{args.input_csv.stem}_top_{len(ranking)}_toxicity_by_post_number.png"
+    output_png = args.output or infer_visualization_output(
+        args.input_csv,
+        f"{args.input_csv.stem}_top_{len(ranking)}_toxicity_by_post_number.png",
     )
     title = args.title or (
         f"{args.input_csv.stem}: Average Detoxify Scores by Post Number "

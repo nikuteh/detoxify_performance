@@ -5,6 +5,11 @@ from pathlib import Path
 import pandas as pd
 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+DATA_SUBREDDITS_DIR = PROJECT_ROOT / "data" / "subreddits"
+VISUALIZATION_SUBREDDITS_DIR = PROJECT_ROOT / "visualizations" / "subreddits"
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Plot the number of subreddit posts/comments over time."
@@ -45,6 +50,19 @@ def parse_args():
         help="Rows to read at a time. Default: 100000.",
     )
     return parser.parse_args()
+
+
+def infer_visualization_output(input_csv, filename):
+    try:
+        relative_input = input_csv.resolve().relative_to(DATA_SUBREDDITS_DIR)
+    except ValueError:
+        return input_csv.with_name(filename)
+
+    if not relative_input.parts:
+        return input_csv.with_name(filename)
+
+    subreddit_name = relative_input.parts[0]
+    return VISUALIZATION_SUBREDDITS_DIR / subreddit_name / filename
 
 
 def parse_dates(values):
@@ -95,7 +113,10 @@ def main():
             f"{args.csv} is missing timestamp column: {args.timestamp_column}"
         )
 
-    output_png = args.output or args.csv.with_name(f"{args.csv.stem}_posts_over_time.png")
+    output_png = args.output or infer_visualization_output(
+        args.csv,
+        f"{args.csv.stem}_posts_over_time.png",
+    )
     title = args.title or f"{args.csv.stem} Posts Over Time"
 
     counts, total_rows = count_posts_over_time(

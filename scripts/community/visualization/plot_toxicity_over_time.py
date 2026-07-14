@@ -4,12 +4,12 @@ from pathlib import Path
 
 
 DEFAULT_INPUT = Path(
-    "asahi_linux_reddit/subreddits25/"
+    "data/subreddits/Asahi_Linux/"
     "AsahiLinux_comments_detoxify_unbiased_predictions.csv"
 )
-DEFAULT_OUTPUT = Path(
-    "asahi_linux_reddit/subreddits25/AsahiLinux_toxicity_over_time.png"
-)
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+DATA_SUBREDDITS_DIR = PROJECT_ROOT / "data" / "subreddits"
+VISUALIZATION_SUBREDDITS_DIR = PROJECT_ROOT / "visualizations" / "subreddits"
 
 
 def parse_args():
@@ -63,15 +63,28 @@ def parse_args():
     return parser.parse_args()
 
 
+def infer_visualization_output(input_csv, filename):
+    try:
+        relative_input = input_csv.resolve().relative_to(DATA_SUBREDDITS_DIR)
+    except ValueError:
+        return input_csv.with_name(filename)
+
+    if not relative_input.parts:
+        return input_csv.with_name(filename)
+
+    subreddit_name = relative_input.parts[0]
+    return VISUALIZATION_SUBREDDITS_DIR / subreddit_name / filename
+
+
 def main():
     args = parse_args()
     input_csv = args.input_option or args.csv
     output_png = args.output
     if output_png is None:
-        if input_csv == DEFAULT_INPUT:
-            output_png = DEFAULT_OUTPUT
-        else:
-            output_png = input_csv.with_name(f"{input_csv.stem}_toxicity_over_time.png")
+        output_png = infer_visualization_output(
+            input_csv,
+            f"{input_csv.stem}_toxicity_over_time.png",
+        )
     title = args.title or f"{input_csv.stem} Toxicity Over Time"
 
     os.environ.setdefault("MPLCONFIGDIR", ".matplotlib_cache")

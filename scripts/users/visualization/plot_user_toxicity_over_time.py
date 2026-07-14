@@ -15,6 +15,10 @@ TOXICITY_COLUMNS = [
     "sexual_explicit",
 ]
 
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+DATA_SUBREDDITS_DIR = PROJECT_ROOT / "data" / "subreddits"
+VISUALIZATION_SUBREDDITS_DIR = PROJECT_ROOT / "visualizations" / "subreddits"
+
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -36,7 +40,7 @@ def parse_args():
     parser.add_argument(
         "--output",
         type=Path,
-        help="Output PNG path. Default: next to the user CSV.",
+        help="Output PNG path. Default: inferred from the user CSV path.",
     )
     parser.add_argument(
         "--summary-output",
@@ -60,8 +64,9 @@ def resolve_user_csv(user_or_csv, folder):
     if folder is None:
         raise SystemExit(
             "When passing a username, also pass the folder containing user CSVs.\n"
-            "Example: python plot_user_toxicity_over_time.py angelbirth "
-            "subreddits/asahi_linux/users"
+            "Example: python scripts/users/visualization/"
+            "plot_user_toxicity_over_time.py angelbirth "
+            "data/subreddits/Asahi_Linux/users"
         )
 
     direct_path = folder / f"{user_or_csv}.csv"
@@ -73,6 +78,25 @@ def resolve_user_csv(user_or_csv, folder):
         return users_path
 
     return direct_path
+
+
+def infer_visualization_output(input_csv):
+    filename = f"{input_csv.stem}_toxicity_percentages.png"
+    try:
+        relative_input = input_csv.resolve().relative_to(DATA_SUBREDDITS_DIR)
+    except ValueError:
+        return input_csv.with_name(filename)
+
+    if len(relative_input.parts) < 2:
+        return input_csv.with_name(filename)
+
+    subreddit_name = relative_input.parts[0]
+    parent_parts = relative_input.parts[1:-1]
+    return VISUALIZATION_SUBREDDITS_DIR.joinpath(
+        subreddit_name,
+        *parent_parts,
+        filename,
+    )
 
 
 def compute_user_toxicity_percentages(df, threshold):
@@ -209,9 +233,7 @@ def main():
         if input_csv.parent.name == "users"
         else input_csv.parent.name
     )
-    output_png = args.output or input_csv.with_name(
-        f"{input_csv.stem}_toxicity_percentages.png"
-    )
+    output_png = args.output or infer_visualization_output(input_csv)
     summary = compute_user_toxicity_percentages(df, args.threshold)
     plot_user_toxicity_percentages(summary, output_png, username, subreddit_name)
 

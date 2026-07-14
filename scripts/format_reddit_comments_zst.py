@@ -15,7 +15,7 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description=(
             "Convert a Reddit comments .zst dump into the same CSV format as "
-            "asahi_linux_reddit/subreddits25/AsahiLinux_comments.csv."
+            "the project files in data/subreddits/<Subreddit>/."
         )
     )
     parser.add_argument(
