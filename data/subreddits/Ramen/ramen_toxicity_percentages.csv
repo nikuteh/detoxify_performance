@@ -1,0 +1,8 @@
+score_column,threshold,total_comments,valid_scores,comments_above_threshold,percent_of_all_comments,percent_of_scored_comments
+toxicity,0.5,15000,15000,713,4.753333333333333,4.753333333333333
+severe_toxicity,0.5,15000,15000,0,0.0,0.0
+obscene,0.5,15000,15000,517,3.4466666666666668,3.4466666666666668
+identity_attack,0.5,15000,15000,4,0.02666666666666667,0.02666666666666667
+insult,0.5,15000,15000,156,1.04,1.04
+threat,0.5,15000,15000,12,0.08,0.08
+sexual_explicit,0.5,15000,15000,45,0.3,0.3
