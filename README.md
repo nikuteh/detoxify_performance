@@ -157,6 +157,24 @@ python scripts/community/processing/compute_toxicity_percentages.py \
   --plot-output visualizations/subreddits/<Subreddit>/<comments_base>_toxicity_percentages_threshold_0.8.png
 ```
 
+Save every comment with `toxicity` above `0.5` to its own CSV:
+
+```bash
+python scripts/community/processing/filter_toxic_comments.py \
+  data/subreddits/<Subreddit>/<comments_base>_detoxify_unbiased_predictions.csv \
+  --output data/subreddits/<Subreddit>/<comments_base>_toxicity_above_0_5.csv
+```
+
+Clean the community CSV by keeping only comment replies with `parent_id`
+starting with `t1_`, dropping deleted users, removing URLs from comment text,
+and adding each user's chronological subreddit comment number:
+
+```bash
+python scripts/community/processing/csv_cleaner.py \
+  data/subreddits/<Subreddit>/<comments_base>_detoxify_unbiased_predictions.csv \
+  --output data/subreddits/<Subreddit>/<comments_base>_cleaned.csv
+```
+
 Split the prediction CSV into one CSV per active user:
 
 ```bash
@@ -261,6 +279,38 @@ python scripts/community/visualization/plot_top_users_toxicity_by_post_number.py
   --summary-output data/subreddits/<Subreddit>/<comments_base>_top_100_users_toxicity_by_post_number.csv \
   --title "<Subreddit> Top 100 Users: Average Toxicity by Post Number" \
   --top-n 100
+```
+
+Plot average toxicity and percent of comments above `0.5` toxicity over each
+user's time in the subreddit:
+
+```bash
+python scripts/community/visualization/plot_all_users_toxicity_over_user_time.py \
+  data/subreddits/<Subreddit>/<comments_base>_detoxify_unbiased_predictions.csv \
+  --average-output visualizations/subreddits/<Subreddit>/<comments_base>_all_users_average_toxicity_over_user_time.png \
+  --percent-output visualizations/subreddits/<Subreddit>/<comments_base>_all_users_percent_toxic_over_user_time.png \
+  --summary-output data/subreddits/<Subreddit>/<comments_base>_all_users_toxicity_over_user_time.csv
+```
+
+Plot the parent-comment post-number distribution for toxic comments:
+
+```bash
+python scripts/community/visualization/cultural_violence_test.py \
+  data/subreddits/<Subreddit>/<comments_base>_cleaned_toxicity_above_0_5.csv \
+  data/subreddits/<Subreddit>/<comments_base>_cleaned.csv \
+  --output visualizations/subreddits/<Subreddit>/<comments_base>_cultural_violence_parent_post_numbers.png \
+  --summary-output data/subreddits/<Subreddit>/<comments_base>_cultural_violence_parent_post_numbers.csv
+```
+
+Plot average toxicity and percent toxic by post/comment number for 100 randomly
+sampled users with at least 200 comments:
+
+```bash
+python scripts/community/visualization/plot_random_users_toxicity_by_post_number.py \
+  data/subreddits/<Subreddit>/<comments_base>_detoxify_unbiased_predictions.csv \
+  --average-output visualizations/subreddits/<Subreddit>/<comments_base>_random_users_average_toxicity_by_post_number.png \
+  --percent-output visualizations/subreddits/<Subreddit>/<comments_base>_random_users_percent_toxic_by_post_number.png \
+  --summary-output data/subreddits/<Subreddit>/<comments_base>_random_users_toxicity_by_post_number.csv
 ```
 
 Plot the average toxicity of direct replies to 100 randomly sampled active
