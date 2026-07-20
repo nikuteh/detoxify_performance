@@ -12,9 +12,9 @@ DELETED_USERNAMES = {"[deleted]", "[removed]", "deleted", "removed"}
 def parse_args():
     parser = argparse.ArgumentParser(
         description=(
-            "Clean a subreddit CSV by dropping deleted users, removing URLs "
-            "from comment text, and adding each user's chronological "
-            "post_number."
+            "Clean a subreddit CSV by keeping only comment replies, dropping "
+            "deleted users, removing URLs from comment text, and adding each "
+            "user's chronological post_number."
         )
     )
     parser.add_argument(
@@ -51,6 +51,11 @@ def parse_args():
         help="Column containing Unix timestamps. Default: timestamp.",
     )
     parser.add_argument(
+        "--parent-id-column",
+        default="parent_id",
+        help="Column containing Reddit parent ids. Default: parent_id.",
+    )
+    parser.add_argument(
         "--overwrite-column",
         action="store_true",
         help="Replace an existing post-number column if it already exists.",
@@ -80,6 +85,7 @@ def clean_comments(
     username_column,
     timestamp_column,
     text_column,
+    parent_id_column,
     post_number_column,
 ):
     source_order_column = "__source_order"
@@ -96,11 +102,13 @@ def clean_comments(
         df[timestamp_column],
         errors="coerce",
     )
+    parent_ids = df[parent_id_column].fillna("").astype(str).str.strip()
 
     keep_rows = (
         (df[clean_username_column] != "")
         & df[timestamp_numeric_column].notna()
         & ~df[clean_username_column].str.lower().isin(DELETED_USERNAMES)
+        & parent_ids.str.startswith("t1_")
     )
 
     dropped_rows = original_rows - int(keep_rows.sum())
@@ -139,7 +147,12 @@ def main():
         raise SystemExit("--output cannot be the same file as the input CSV")
 
     columns = set(pd.read_csv(args.input_csv, nrows=0).columns)
-    required = {args.username_column, args.timestamp_column, args.text_column}
+    required = {
+        args.username_column,
+        args.timestamp_column,
+        args.text_column,
+        args.parent_id_column,
+    }
     missing = sorted(required - columns)
     if missing:
         raise SystemExit(
@@ -157,6 +170,7 @@ def main():
         args.username_column,
         args.timestamp_column,
         args.text_column,
+        args.parent_id_column,
         args.post_number_column,
     )
 

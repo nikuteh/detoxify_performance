@@ -165,8 +165,9 @@ python scripts/community/processing/filter_toxic_comments.py \
   --output data/subreddits/<Subreddit>/<comments_base>_toxicity_above_0_5.csv
 ```
 
-Clean the community CSV by dropping deleted users, removing URLs from comment
-text, and adding each user's chronological subreddit comment number:
+Clean the community CSV by keeping only comment replies with `parent_id`
+starting with `t1_`, dropping deleted users, removing URLs from comment text,
+and adding each user's chronological subreddit comment number:
 
 ```bash
 python scripts/community/processing/csv_cleaner.py \
@@ -289,6 +290,16 @@ python scripts/community/visualization/plot_all_users_toxicity_over_user_time.py
   --average-output visualizations/subreddits/<Subreddit>/<comments_base>_all_users_average_toxicity_over_user_time.png \
   --percent-output visualizations/subreddits/<Subreddit>/<comments_base>_all_users_percent_toxic_over_user_time.png \
   --summary-output data/subreddits/<Subreddit>/<comments_base>_all_users_toxicity_over_user_time.csv
+```
+
+Plot the parent-comment post-number distribution for toxic comments:
+
+```bash
+python scripts/community/visualization/cultural_violence_test.py \
+  data/subreddits/<Subreddit>/<comments_base>_cleaned_toxicity_above_0_5.csv \
+  data/subreddits/<Subreddit>/<comments_base>_cleaned.csv \
+  --output visualizations/subreddits/<Subreddit>/<comments_base>_cultural_violence_parent_post_numbers.png \
+  --summary-output data/subreddits/<Subreddit>/<comments_base>_cultural_violence_parent_post_numbers.csv
 ```
 
 Plot average toxicity and percent toxic by post/comment number for 100 randomly
