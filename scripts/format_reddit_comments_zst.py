@@ -8,7 +8,14 @@ from contextlib import contextmanager
 from pathlib import Path
 
 
-CSV_COLUMNS = ["Subreddit", "username", "timestamp", "comment_text", "parent_id"]
+CSV_COLUMNS = [
+    "Subreddit",
+    "comment_id",
+    "username",
+    "timestamp",
+    "comment_text",
+    "parent_id",
+]
 
 
 def parse_args():
@@ -111,6 +118,7 @@ def format_timestamp(value):
 def comment_to_row(comment):
     return {
         "Subreddit": comment.get("subreddit", ""),
+        "comment_id": comment.get("id", ""),
         "username": comment.get("author", ""),
         "timestamp": format_timestamp(comment.get("created_utc", "")),
         "comment_text": clean_comment_text(comment.get("body", "")),

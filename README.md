@@ -89,12 +89,12 @@ python scripts/format_reddit_comments_zst.py \
 The converted comments CSV has this shape:
 
 ```text
-Subreddit,username,timestamp,comment_text,parent_id
+Subreddit,comment_id,username,timestamp,comment_text,parent_id
 ```
 
 If your source is already plain text or another CSV format, convert it into that
 same CSV shape before running Detoxify. The important columns for later scripts
-are `username`, `timestamp`, and `comment_text`.
+are `comment_id`, `username`, `timestamp`, `comment_text`, and `parent_id`.
 
 For a quick conversion test:
 
@@ -261,6 +261,19 @@ python scripts/community/visualization/plot_top_users_toxicity_by_post_number.py
   --summary-output data/subreddits/<Subreddit>/<comments_base>_top_100_users_toxicity_by_post_number.csv \
   --title "<Subreddit> Top 100 Users: Average Toxicity by Post Number" \
   --top-n 100
+```
+
+Plot the average toxicity of direct replies to 100 randomly sampled active
+users' comments by each user's post/comment number:
+
+```bash
+python scripts/community/visualization/plot_response_toxicity_by_user_post_number.py \
+  data/subreddits/<Subreddit>/<comments_base>_detoxify_unbiased_predictions.csv \
+  --output visualizations/subreddits/<Subreddit>/<comments_base>_response_toxicity_by_post_number.png \
+  --summary-output data/subreddits/<Subreddit>/<comments_base>_response_toxicity_by_post_number.csv \
+  --users 100 \
+  --min-comments 200 \
+  --comments-per-user 500
 ```
 
 ## 5. Individual-User Processing And Visualization
