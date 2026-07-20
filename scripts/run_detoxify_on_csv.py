@@ -38,7 +38,7 @@ def parse_args():
     )
     parser.add_argument(
         "--device",
-        default="auto",
+        default="cuda",
         choices=("auto", "cpu", "cuda"),
         help="Device for Detoxify. Default: auto.",
     )

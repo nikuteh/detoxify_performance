@@ -1,4 +1,2 @@
 jigsaw-unintended-bias/
-data/subreddits/Asahi_Linux/**
-!data/subreddits/Asahi_Linux/
-!data/subreddits/Asahi_Linux/.gitkeep
+data/subreddits/
