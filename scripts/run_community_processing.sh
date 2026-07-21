@@ -124,7 +124,7 @@ python -u scripts/community/visualization/cultural_violence_test_2.py \
   "$TOXIC_CSV" \
   "$CLEANED_CSV" \
   --output "${VIS_DIR}/${COMMENTS_BASE}_cultural_violence_parent_post_numbers.png" \
-  --likelihood-output "${VIS_DIR}/${COMMENTS_BASE}_cultural_violence_comments_per_toxic_response_percent_by_parent_post_number.png" \
+  --likelihood-output "${VIS_DIR}/${COMMENTS_BASE}_cultural_violence_toxic_responses_per_comment_percent_by_parent_post_number.png" \
   --summary-output "${DATA_DIR}/${COMMENTS_BASE}_cultural_violence_parent_post_numbers.csv" \
   --title "${SUBREDDIT} Cultural Violence Parent Post Numbers"
 
