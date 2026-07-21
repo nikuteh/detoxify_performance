@@ -1,0 +1,13 @@
+   score_column  threshold  total_comments  valid_scores  comments_above_threshold  percent_of_all_comments  percent_of_scored_comments
+       toxicity        0.8          250418        250418                      7806                   3.1172                      3.1172
+severe_toxicity        0.8          250418        250418                         0                   0.0000                      0.0000
+        obscene        0.8          250418        250418                      5101                   2.0370                      2.0370
+identity_attack        0.8          250418        250418                        18                   0.0072                      0.0072
+         insult        0.8          250418        250418                      1767                   0.7056                      0.7056
+         threat        0.8          250418        250418                        30                   0.0120                      0.0120
+sexual_explicit        0.8          250418        250418                       394                   0.1573                      0.1573
+Saved visualizations/subreddits/Ramen/ramen_comments_toxicity_percentages_threshold_0.8.png
+Saved data/subreddits/Ramen/ramen_comments_toxicity_above_0_5.csv
+Total rows read: 520,521
+Rows with valid toxicity: 520,521
+Rows with toxicity > 0.5: 23,392
