@@ -120,7 +120,7 @@ python -u scripts/community/visualization/plot_all_users_toxicity_over_user_time
   --percent-output "${VIS_DIR}/${COMMENTS_BASE}_all_users_percent_toxic_over_user_time.png" \
   --summary-output "${DATA_DIR}/${COMMENTS_BASE}_all_users_toxicity_over_user_time.csv"
 
-python -u scripts/community/visualization/cultural_violence_test.py \
+python -u scripts/community/visualization/cultural_violence_test_2.py \
   "$TOXIC_CSV" \
   "$CLEANED_CSV" \
   --output "${VIS_DIR}/${COMMENTS_BASE}_cultural_violence_parent_post_numbers.png" \
