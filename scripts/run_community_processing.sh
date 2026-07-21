@@ -128,6 +128,12 @@ python -u scripts/community/visualization/cultural_violence_test_2.py \
   --summary-output "${DATA_DIR}/${COMMENTS_BASE}_cultural_violence_parent_post_numbers.csv" \
   --title "${SUBREDDIT} Cultural Violence Parent Post Numbers"
 
+python -u scripts/community/visualization/cultural_violence_test_3.py \
+  "$PREDICTIONS_CSV" \
+  --output "${VIS_DIR}/${COMMENTS_BASE}_average_response_toxicity_by_parent_post_number.png" \
+  --summary-output "${DATA_DIR}/${COMMENTS_BASE}_average_response_toxicity_by_parent_post_number.csv" \
+  --title "${SUBREDDIT} Average Response Toxicity by Parent Post Number"
+
 python -u scripts/community/visualization/plot_response_toxicity_by_user_post_number.py \
   "$PREDICTIONS_CSV" \
   --output "${VIS_DIR}/${COMMENTS_BASE}_response_toxicity_by_post_number.png" \
