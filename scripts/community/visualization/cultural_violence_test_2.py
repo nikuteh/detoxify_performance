@@ -73,6 +73,15 @@ def parse_args():
         help="Only include parent post numbers up to this value.",
     )
     parser.add_argument(
+        "--max-plot-bars",
+        type=int,
+        default=200,
+        help=(
+            "Maximum bars to draw before aggregating adjacent post numbers "
+            "into visible ranges. Default: 200."
+        ),
+    )
+    parser.add_argument(
         "--title",
         help="Plot title. Default: inferred from the toxic CSV filename.",
     )
@@ -251,6 +260,10 @@ def summarize_toxic_comments_by_parent_post_number(
         "parent_comments_with_toxic_response": int(
             summary["parent_comments_with_toxic_response"].sum()
         ),
+        "post_numbers_in_summary": len(summary),
+        "post_numbers_with_toxic_response": int(
+            (summary["parent_comments_with_toxic_response"] > 0).sum()
+        ),
     }
 
 
@@ -281,7 +294,77 @@ def set_post_number_ticks(ax, plot_data, post_number_column):
     )
 
 
-def plot_count_histogram(summary, post_number_column, output_png, title, counts):
+def add_post_number_labels(plot_data, post_number_column):
+    plot_data = plot_data.copy()
+    if "post_number_label" in plot_data.columns:
+        return plot_data
+
+    plot_data["post_number_label"] = plot_data[post_number_column].astype(str)
+    return plot_data
+
+
+def bin_for_plot(summary, post_number_column, max_plot_bars):
+    if max_plot_bars < 1:
+        raise SystemExit("--max-plot-bars must be at least 1")
+
+    if len(summary) <= max_plot_bars:
+        return add_post_number_labels(summary, post_number_column), False
+
+    sorted_summary = summary.sort_values(post_number_column).reset_index(drop=True)
+    bin_size = (len(sorted_summary) + max_plot_bars - 1) // max_plot_bars
+    sorted_summary["plot_bin"] = sorted_summary.index // bin_size
+
+    plot_data = (
+        sorted_summary.groupby("plot_bin")
+        .agg(
+            post_number_min=(post_number_column, "min"),
+            post_number_max=(post_number_column, "max"),
+            toxic_comment_count=("toxic_comment_count", "sum"),
+            parent_comments_with_toxic_response=(
+                "parent_comments_with_toxic_response",
+                "sum",
+            ),
+            total_parent_comments=("total_parent_comments", "sum"),
+        )
+        .reset_index(drop=True)
+    )
+    plot_data["percent_parent_comments_with_toxic_response"] = (
+        plot_data["parent_comments_with_toxic_response"]
+        / plot_data["total_parent_comments"]
+        * 100
+    )
+    plot_data["post_number_label"] = plot_data["post_number_min"].astype(str)
+    ranged_bins = plot_data["post_number_min"] != plot_data["post_number_max"]
+    plot_data.loc[ranged_bins, "post_number_label"] = (
+        plot_data.loc[ranged_bins, "post_number_min"].astype(str)
+        + "-"
+        + plot_data.loc[ranged_bins, "post_number_max"].astype(str)
+    )
+    return plot_data, True
+
+
+def set_plot_ticks(ax, plot_data):
+    tick_count = min(12, len(plot_data))
+    tick_step = max(len(plot_data) // tick_count, 1)
+    tick_positions = list(range(0, len(plot_data), tick_step))
+    if tick_positions[-1] != len(plot_data) - 1:
+        tick_positions.append(len(plot_data) - 1)
+    ax.set_xticks(tick_positions)
+    ax.set_xticklabels(
+        plot_data.loc[tick_positions, "post_number_label"],
+        rotation=45,
+        ha="right",
+    )
+
+
+def plot_count_histogram(
+    summary,
+    post_number_column,
+    output_png,
+    title,
+    counts,
+    max_plot_bars,
+):
     plt = configure_matplotlib()
     output_png.parent.mkdir(parents=True, exist_ok=True)
 
@@ -289,7 +372,11 @@ def plot_count_histogram(summary, post_number_column, output_png, title, counts)
     ax.set_facecolor("#FAFAFA")
     fig.patch.set_facecolor("white")
 
-    plot_data = summary.reset_index(drop=True)
+    plot_data = summary[summary["toxic_comment_count"] > 0].reset_index(drop=True)
+    if plot_data.empty:
+        raise SystemExit("No parent post numbers have toxic comment counts to plot")
+    plot_data, was_binned = bin_for_plot(plot_data, post_number_column, max_plot_bars)
+
     x_positions = range(len(plot_data))
     ax.bar(
         x_positions,
@@ -299,9 +386,12 @@ def plot_count_histogram(summary, post_number_column, output_png, title, counts)
         edgecolor="white",
         linewidth=0.4,
     )
-    set_post_number_ticks(ax, plot_data, post_number_column)
+    set_plot_ticks(ax, plot_data)
     ax.set_title(title, pad=12)
-    ax.set_xlabel("Parent comment post number")
+    xlabel = "Parent comment post number with at least one toxic reply"
+    if was_binned:
+        xlabel = "Parent comment post number range with at least one toxic reply"
+    ax.set_xlabel(xlabel)
     ax.set_ylabel("Toxic comments directed at parent comments")
     ax.set_ylim(bottom=0)
     ax.grid(True, axis="y", color="#E2E2E2", linewidth=0.8)
@@ -312,7 +402,7 @@ def plot_count_histogram(summary, post_number_column, output_png, title, counts)
             "Toxic comments with t1_ parents: "
             f"{counts['toxic_comments_with_t1_parent']:,}; "
             f"linked to parents: {counts['linked_toxic_comments']:,}; "
-            f"dropped unlinked: {counts['dropped_unlinked_toxic_comments']:,}"
+            f"post numbers shown: {len(plot_data):,}"
         ),
         transform=ax.transAxes,
         ha="right",
@@ -326,7 +416,14 @@ def plot_count_histogram(summary, post_number_column, output_png, title, counts)
     plt.close(fig)
 
 
-def plot_likelihood_histogram(summary, post_number_column, output_png, title, counts):
+def plot_likelihood_histogram(
+    summary,
+    post_number_column,
+    output_png,
+    title,
+    counts,
+    max_plot_bars,
+):
     plt = configure_matplotlib()
     output_png.parent.mkdir(parents=True, exist_ok=True)
 
@@ -334,7 +431,13 @@ def plot_likelihood_histogram(summary, post_number_column, output_png, title, co
     ax.set_facecolor("#FAFAFA")
     fig.patch.set_facecolor("white")
 
-    plot_data = summary.reset_index(drop=True)
+    plot_data = summary[
+        summary["parent_comments_with_toxic_response"] > 0
+    ].reset_index(drop=True)
+    if plot_data.empty:
+        raise SystemExit("No parent post numbers have toxic-response likelihood to plot")
+    plot_data, was_binned = bin_for_plot(plot_data, post_number_column, max_plot_bars)
+
     x_positions = range(len(plot_data))
     ax.bar(
         x_positions,
@@ -344,9 +447,12 @@ def plot_likelihood_histogram(summary, post_number_column, output_png, title, co
         edgecolor="white",
         linewidth=0.4,
     )
-    set_post_number_ticks(ax, plot_data, post_number_column)
+    set_plot_ticks(ax, plot_data)
     ax.set_title(title, pad=12)
-    ax.set_xlabel("Parent comment post number")
+    xlabel = "Parent comment post number with at least one toxic reply"
+    if was_binned:
+        xlabel = "Parent comment post number range with at least one toxic reply"
+    ax.set_xlabel(xlabel)
     ax.set_ylabel("Percent of comments receiving a toxic reply")
     ax.set_ylim(bottom=0)
     ax.grid(True, axis="y", color="#E2E2E2", linewidth=0.8)
@@ -356,7 +462,7 @@ def plot_likelihood_histogram(summary, post_number_column, output_png, title, co
         (
             "Parent comments with toxic replies: "
             f"{counts['parent_comments_with_toxic_response']:,}; "
-            f"linked toxic replies: {counts['linked_toxic_comments']:,}"
+            f"post numbers shown: {len(plot_data):,}"
         ),
         transform=ax.transAxes,
         ha="right",
@@ -381,6 +487,8 @@ def main():
         )
     if args.max_post_number is not None and args.max_post_number < 1:
         raise SystemExit("--max-post-number must be at least 1")
+    if args.max_plot_bars < 1:
+        raise SystemExit("--max-plot-bars must be at least 1")
 
     toxic_columns = set(pd.read_csv(args.toxic_csv, nrows=0).columns)
     if args.parent_id_column not in toxic_columns:
@@ -434,13 +542,21 @@ def main():
         summary.to_csv(args.summary_output, index=False)
         print(f"Saved {args.summary_output}")
 
-    plot_count_histogram(summary, args.post_number_column, output_png, title, counts)
+    plot_count_histogram(
+        summary,
+        args.post_number_column,
+        output_png,
+        title,
+        counts,
+        args.max_plot_bars,
+    )
     plot_likelihood_histogram(
         summary,
         args.post_number_column,
         likelihood_output_png,
         likelihood_title,
         counts,
+        args.max_plot_bars,
     )
 
     print(f"Saved {output_png}")
@@ -459,7 +575,11 @@ def main():
         "Parent comments with at least one toxic reply: "
         f"{counts['parent_comments_with_toxic_response']:,}"
     )
-    print(f"Parent post numbers plotted: {len(summary):,}")
+    print(f"Parent post numbers in summary: {counts['post_numbers_in_summary']:,}")
+    print(
+        "Parent post numbers plotted: "
+        f"{counts['post_numbers_with_toxic_response']:,}"
+    )
 
 
 if __name__ == "__main__":
