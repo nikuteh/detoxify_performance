@@ -41,8 +41,8 @@ def parse_args():
         type=Path,
         help=(
             "Output PNG for percent of comments at each post_number that "
-            "received at least one toxic reply. Default: inferred from the "
-            "toxic CSV filename."
+            "divides total comments by toxic responses. Default: inferred "
+            "from the toxic CSV filename."
         ),
     )
     parser.add_argument(
@@ -70,7 +70,8 @@ def parse_args():
     parser.add_argument(
         "--max-post-number",
         type=int,
-        help="Only include parent post numbers up to this value.",
+        default=2000,
+        help="Only include parent post numbers up to this value. Default: 2000.",
     )
     parser.add_argument(
         "--max-plot-bars",
@@ -238,9 +239,11 @@ def summarize_toxic_comments_by_parent_post_number(
     summary["parent_comments_with_toxic_response"] = (
         summary["parent_comments_with_toxic_response"].fillna(0).astype(int)
     )
-    summary["percent_parent_comments_with_toxic_response"] = (
-        summary["parent_comments_with_toxic_response"]
-        / summary["total_parent_comments"]
+    summary["percent_comments_per_toxic_response"] = pd.NA
+    has_toxic_responses = summary["toxic_comment_count"] > 0
+    summary.loc[has_toxic_responses, "percent_comments_per_toxic_response"] = (
+        summary.loc[has_toxic_responses, "total_parent_comments"]
+        / summary.loc[has_toxic_responses, "toxic_comment_count"]
         * 100
     )
 
@@ -264,6 +267,7 @@ def summarize_toxic_comments_by_parent_post_number(
         "post_numbers_with_toxic_response": int(
             (summary["parent_comments_with_toxic_response"] > 0).sum()
         ),
+        "max_post_number": max_post_number,
     }
 
 
@@ -328,9 +332,9 @@ def bin_for_plot(summary, post_number_column, max_plot_bars):
         )
         .reset_index(drop=True)
     )
-    plot_data["percent_parent_comments_with_toxic_response"] = (
-        plot_data["parent_comments_with_toxic_response"]
-        / plot_data["total_parent_comments"]
+    plot_data["percent_comments_per_toxic_response"] = (
+        plot_data["total_parent_comments"]
+        / plot_data["toxic_comment_count"]
         * 100
     )
     plot_data["post_number_label"] = plot_data["post_number_min"].astype(str)
@@ -416,7 +420,7 @@ def plot_count_histogram(
     plt.close(fig)
 
 
-def plot_likelihood_histogram(
+def plot_percent_histogram(
     summary,
     post_number_column,
     output_png,
@@ -432,16 +436,16 @@ def plot_likelihood_histogram(
     fig.patch.set_facecolor("white")
 
     plot_data = summary[
-        summary["parent_comments_with_toxic_response"] > 0
+        summary["toxic_comment_count"] > 0
     ].reset_index(drop=True)
     if plot_data.empty:
-        raise SystemExit("No parent post numbers have toxic-response likelihood to plot")
+        raise SystemExit("No parent post numbers have toxic-response percent to plot")
     plot_data, was_binned = bin_for_plot(plot_data, post_number_column, max_plot_bars)
 
     x_positions = range(len(plot_data))
     ax.bar(
         x_positions,
-        plot_data["percent_parent_comments_with_toxic_response"],
+        plot_data["percent_comments_per_toxic_response"],
         width=0.85,
         color="#F58518",
         edgecolor="white",
@@ -453,15 +457,15 @@ def plot_likelihood_histogram(
     if was_binned:
         xlabel = "Parent comment post number range with at least one toxic reply"
     ax.set_xlabel(xlabel)
-    ax.set_ylabel("Percent of comments receiving a toxic reply")
+    ax.set_ylabel("Comments divided by toxic responses (%)")
     ax.set_ylim(bottom=0)
     ax.grid(True, axis="y", color="#E2E2E2", linewidth=0.8)
     ax.text(
         1,
         -0.13,
         (
-            "Parent comments with toxic replies: "
-            f"{counts['parent_comments_with_toxic_response']:,}; "
+            "Max parent post number: "
+            f"{counts['max_post_number']:,}; "
             f"post numbers shown: {len(plot_data):,}"
         ),
         transform=ax.transAxes,
@@ -527,14 +531,14 @@ def main():
         args.toxic_csv,
         (
             f"{args.toxic_csv.stem}_cultural_violence_parent_post_number_"
-            "toxic_response_likelihood.png"
+            "comments_per_toxic_response_percent.png"
         ),
     )
     title = args.title or (
         f"{args.toxic_csv.stem}: Toxic Comments by Parent Post Number"
     )
     likelihood_title = (
-        f"{args.toxic_csv.stem}: Toxic Reply Likelihood by Parent Post Number"
+        f"{args.toxic_csv.stem}: Comments per Toxic Response by Parent Post Number"
     )
 
     if args.summary_output:
@@ -550,7 +554,7 @@ def main():
         counts,
         args.max_plot_bars,
     )
-    plot_likelihood_histogram(
+    plot_percent_histogram(
         summary,
         args.post_number_column,
         likelihood_output_png,
