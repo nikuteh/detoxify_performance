@@ -163,17 +163,18 @@ def summarize_toxic_comments_by_parent_post_number(
     post_number_column,
     max_post_number,
 ):
-    matched = toxic.merge(
+    matched_parents = toxic.merge(
         parent_lookup,
-        how="left",
+        how="inner",
         left_on="normalized_parent_id",
         right_on="normalized_comment_id",
     )
-    matched_parents = matched.dropna(subset=[post_number_column]).copy()
+    matched_parents = matched_parents.dropna(subset=[post_number_column]).copy()
     matched_parents[post_number_column] = matched_parents[
         post_number_column
     ].astype(int)
 
+    linked_toxic_comments = len(matched_parents)
     if max_post_number is not None:
         matched_parents = matched_parents[
             matched_parents[post_number_column] <= max_post_number
@@ -190,26 +191,18 @@ def summarize_toxic_comments_by_parent_post_number(
         .sort_values(post_number_column)
     )
 
-    first_post_number = int(summary[post_number_column].min())
-    last_post_number = int(summary[post_number_column].max())
-    full_post_numbers = pd.DataFrame(
-        {post_number_column: range(first_post_number, last_post_number + 1)}
-    )
-    summary = full_post_numbers.merge(summary, on=post_number_column, how="left")
-    summary["toxic_comment_count"] = (
-        summary["toxic_comment_count"].fillna(0).astype(int)
-    )
-
-    total_toxic_comments = len(toxic)
-    matched_toxic_comments = int(matched[post_number_column].notna().sum())
+    toxic_comments_with_t1_parent = len(toxic)
     plotted_toxic_comments = int(summary["toxic_comment_count"].sum())
     summary["percent_of_matched_toxic_comments"] = (
-        summary["toxic_comment_count"] / matched_toxic_comments * 100
+        summary["toxic_comment_count"] / linked_toxic_comments * 100
     )
 
     return summary, {
-        "total_toxic_comments_with_t1_parent": total_toxic_comments,
-        "matched_toxic_comments": matched_toxic_comments,
+        "toxic_comments_with_t1_parent": toxic_comments_with_t1_parent,
+        "dropped_unlinked_toxic_comments": (
+            toxic_comments_with_t1_parent - linked_toxic_comments
+        ),
+        "linked_toxic_comments": linked_toxic_comments,
         "plotted_toxic_comments": plotted_toxic_comments,
     }
 
@@ -230,13 +223,26 @@ def plot_histogram(summary, post_number_column, output_png, title, counts):
     ax.set_facecolor("#FAFAFA")
     fig.patch.set_facecolor("white")
 
+    plot_data = summary.reset_index(drop=True)
+    x_positions = range(len(plot_data))
     ax.bar(
-        summary[post_number_column],
-        summary["toxic_comment_count"],
-        width=0.9,
+        x_positions,
+        plot_data["toxic_comment_count"],
+        width=0.85,
         color="#4C78A8",
         edgecolor="white",
         linewidth=0.4,
+    )
+    tick_count = min(12, len(plot_data))
+    tick_step = max(len(plot_data) // tick_count, 1)
+    tick_positions = list(range(0, len(plot_data), tick_step))
+    if tick_positions[-1] != len(plot_data) - 1:
+        tick_positions.append(len(plot_data) - 1)
+    ax.set_xticks(tick_positions)
+    ax.set_xticklabels(
+        plot_data.loc[tick_positions, post_number_column].astype(str),
+        rotation=45,
+        ha="right",
     )
     ax.set_title(title, pad=12)
     ax.set_xlabel("Parent comment post number")
@@ -248,8 +254,9 @@ def plot_histogram(summary, post_number_column, output_png, title, counts):
         -0.13,
         (
             "Toxic comments with t1_ parents: "
-            f"{counts['total_toxic_comments_with_t1_parent']:,}; "
-            f"matched parents: {counts['matched_toxic_comments']:,}"
+            f"{counts['toxic_comments_with_t1_parent']:,}; "
+            f"linked to parents: {counts['linked_toxic_comments']:,}; "
+            f"dropped unlinked: {counts['dropped_unlinked_toxic_comments']:,}"
         ),
         transform=ax.transAxes,
         ha="right",
@@ -322,9 +329,13 @@ def main():
     print(f"Saved {output_png}")
     print(
         "Toxic comments with t1_ parent ids: "
-        f"{counts['total_toxic_comments_with_t1_parent']:,}"
+        f"{counts['toxic_comments_with_t1_parent']:,}"
     )
-    print(f"Toxic comments with matched parents: {counts['matched_toxic_comments']:,}")
+    print(
+        "Dropped toxic comments without linked parents: "
+        f"{counts['dropped_unlinked_toxic_comments']:,}"
+    )
+    print(f"Toxic comments linked to parents: {counts['linked_toxic_comments']:,}")
     print(f"Toxic comments plotted: {counts['plotted_toxic_comments']:,}")
     print(f"Parent post numbers plotted: {len(summary):,}")
 
