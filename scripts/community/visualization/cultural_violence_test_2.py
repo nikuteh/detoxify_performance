@@ -37,6 +37,15 @@ def parse_args():
         help="Output PNG path. Default: inferred from the toxic CSV filename.",
     )
     parser.add_argument(
+        "--likelihood-output",
+        type=Path,
+        help=(
+            "Output PNG for percent of comments at each post_number that "
+            "received at least one toxic reply. Default: inferred from the "
+            "toxic CSV filename."
+        ),
+    )
+    parser.add_argument(
         "--summary-output",
         type=Path,
         help="Optional output CSV containing counts by parent post_number.",
@@ -183,12 +192,47 @@ def summarize_toxic_comments_by_parent_post_number(
     if matched_parents.empty:
         raise SystemExit("No toxic comments matched parent comments with post_number")
 
-    summary = (
+    toxic_reply_counts = (
         matched_parents.groupby(post_number_column)
         .size()
         .rename("toxic_comment_count")
         .reset_index()
         .sort_values(post_number_column)
+    )
+    parents_with_toxic_replies = (
+        matched_parents.drop_duplicates("normalized_parent_id")
+        .groupby(post_number_column)
+        .size()
+        .rename("parent_comments_with_toxic_response")
+        .reset_index()
+    )
+    parent_totals = (
+        parent_lookup.groupby(post_number_column)
+        .size()
+        .rename("total_parent_comments")
+        .reset_index()
+    )
+    if max_post_number is not None:
+        parent_totals = parent_totals[
+            parent_totals[post_number_column] <= max_post_number
+        ].copy()
+
+    summary = parent_totals.merge(toxic_reply_counts, on=post_number_column, how="left")
+    summary = summary.merge(
+        parents_with_toxic_replies,
+        on=post_number_column,
+        how="left",
+    )
+    summary["toxic_comment_count"] = (
+        summary["toxic_comment_count"].fillna(0).astype(int)
+    )
+    summary["parent_comments_with_toxic_response"] = (
+        summary["parent_comments_with_toxic_response"].fillna(0).astype(int)
+    )
+    summary["percent_parent_comments_with_toxic_response"] = (
+        summary["parent_comments_with_toxic_response"]
+        / summary["total_parent_comments"]
+        * 100
     )
 
     toxic_comments_with_t1_parent = len(toxic)
@@ -204,10 +248,13 @@ def summarize_toxic_comments_by_parent_post_number(
         ),
         "linked_toxic_comments": linked_toxic_comments,
         "plotted_toxic_comments": plotted_toxic_comments,
+        "parent_comments_with_toxic_response": int(
+            summary["parent_comments_with_toxic_response"].sum()
+        ),
     }
 
 
-def plot_histogram(summary, post_number_column, output_png, title, counts):
+def configure_matplotlib():
     os.environ.setdefault("MPLCONFIGDIR", ".matplotlib_cache")
     Path(os.environ["MPLCONFIGDIR"]).mkdir(parents=True, exist_ok=True)
 
@@ -217,6 +264,25 @@ def plot_histogram(summary, post_number_column, output_png, title, counts):
 
     import matplotlib.pyplot as plt
 
+    return plt
+
+
+def set_post_number_ticks(ax, plot_data, post_number_column):
+    tick_count = min(12, len(plot_data))
+    tick_step = max(len(plot_data) // tick_count, 1)
+    tick_positions = list(range(0, len(plot_data), tick_step))
+    if tick_positions[-1] != len(plot_data) - 1:
+        tick_positions.append(len(plot_data) - 1)
+    ax.set_xticks(tick_positions)
+    ax.set_xticklabels(
+        plot_data.loc[tick_positions, post_number_column].astype(str),
+        rotation=45,
+        ha="right",
+    )
+
+
+def plot_count_histogram(summary, post_number_column, output_png, title, counts):
+    plt = configure_matplotlib()
     output_png.parent.mkdir(parents=True, exist_ok=True)
 
     fig, ax = plt.subplots(figsize=(13, 7), dpi=160)
@@ -233,17 +299,7 @@ def plot_histogram(summary, post_number_column, output_png, title, counts):
         edgecolor="white",
         linewidth=0.4,
     )
-    tick_count = min(12, len(plot_data))
-    tick_step = max(len(plot_data) // tick_count, 1)
-    tick_positions = list(range(0, len(plot_data), tick_step))
-    if tick_positions[-1] != len(plot_data) - 1:
-        tick_positions.append(len(plot_data) - 1)
-    ax.set_xticks(tick_positions)
-    ax.set_xticklabels(
-        plot_data.loc[tick_positions, post_number_column].astype(str),
-        rotation=45,
-        ha="right",
-    )
+    set_post_number_ticks(ax, plot_data, post_number_column)
     ax.set_title(title, pad=12)
     ax.set_xlabel("Parent comment post number")
     ax.set_ylabel("Toxic comments directed at parent comments")
@@ -257,6 +313,50 @@ def plot_histogram(summary, post_number_column, output_png, title, counts):
             f"{counts['toxic_comments_with_t1_parent']:,}; "
             f"linked to parents: {counts['linked_toxic_comments']:,}; "
             f"dropped unlinked: {counts['dropped_unlinked_toxic_comments']:,}"
+        ),
+        transform=ax.transAxes,
+        ha="right",
+        va="top",
+        fontsize=9,
+        color="#555555",
+    )
+
+    fig.tight_layout()
+    fig.savefig(output_png)
+    plt.close(fig)
+
+
+def plot_likelihood_histogram(summary, post_number_column, output_png, title, counts):
+    plt = configure_matplotlib()
+    output_png.parent.mkdir(parents=True, exist_ok=True)
+
+    fig, ax = plt.subplots(figsize=(13, 7), dpi=160)
+    ax.set_facecolor("#FAFAFA")
+    fig.patch.set_facecolor("white")
+
+    plot_data = summary.reset_index(drop=True)
+    x_positions = range(len(plot_data))
+    ax.bar(
+        x_positions,
+        plot_data["percent_parent_comments_with_toxic_response"],
+        width=0.85,
+        color="#F58518",
+        edgecolor="white",
+        linewidth=0.4,
+    )
+    set_post_number_ticks(ax, plot_data, post_number_column)
+    ax.set_title(title, pad=12)
+    ax.set_xlabel("Parent comment post number")
+    ax.set_ylabel("Percent of comments receiving a toxic reply")
+    ax.set_ylim(bottom=0)
+    ax.grid(True, axis="y", color="#E2E2E2", linewidth=0.8)
+    ax.text(
+        1,
+        -0.13,
+        (
+            "Parent comments with toxic replies: "
+            f"{counts['parent_comments_with_toxic_response']:,}; "
+            f"linked toxic replies: {counts['linked_toxic_comments']:,}"
         ),
         transform=ax.transAxes,
         ha="right",
@@ -315,8 +415,18 @@ def main():
         args.toxic_csv,
         f"{args.toxic_csv.stem}_cultural_violence_parent_post_numbers.png",
     )
+    likelihood_output_png = args.likelihood_output or infer_visualization_output(
+        args.toxic_csv,
+        (
+            f"{args.toxic_csv.stem}_cultural_violence_parent_post_number_"
+            "toxic_response_likelihood.png"
+        ),
+    )
     title = args.title or (
         f"{args.toxic_csv.stem}: Toxic Comments by Parent Post Number"
+    )
+    likelihood_title = (
+        f"{args.toxic_csv.stem}: Toxic Reply Likelihood by Parent Post Number"
     )
 
     if args.summary_output:
@@ -324,9 +434,17 @@ def main():
         summary.to_csv(args.summary_output, index=False)
         print(f"Saved {args.summary_output}")
 
-    plot_histogram(summary, args.post_number_column, output_png, title, counts)
+    plot_count_histogram(summary, args.post_number_column, output_png, title, counts)
+    plot_likelihood_histogram(
+        summary,
+        args.post_number_column,
+        likelihood_output_png,
+        likelihood_title,
+        counts,
+    )
 
     print(f"Saved {output_png}")
+    print(f"Saved {likelihood_output_png}")
     print(
         "Toxic comments with t1_ parent ids: "
         f"{counts['toxic_comments_with_t1_parent']:,}"
@@ -337,6 +455,10 @@ def main():
     )
     print(f"Toxic comments linked to parents: {counts['linked_toxic_comments']:,}")
     print(f"Toxic comments plotted: {counts['plotted_toxic_comments']:,}")
+    print(
+        "Parent comments with at least one toxic reply: "
+        f"{counts['parent_comments_with_toxic_response']:,}"
+    )
     print(f"Parent post numbers plotted: {len(summary):,}")
 
 
