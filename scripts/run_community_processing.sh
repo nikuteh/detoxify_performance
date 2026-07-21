@@ -46,6 +46,7 @@ if [ ! -f "$CLEANED_CSV" ]; then
 fi
 
 mkdir -p "$DATA_DIR" "$VIS_DIR" "$USERS_DIR"
+find "$VIS_DIR" -type f -name '*.png' -delete
 
 # compute toxicity percentages for all comments in a csv
 python -u scripts/community/processing/compute_toxicity_percentages.py \
@@ -133,6 +134,12 @@ python -u scripts/community/visualization/cultural_violence_test_3.py \
   --output "${VIS_DIR}/${COMMENTS_BASE}_average_response_toxicity_by_parent_post_number.png" \
   --summary-output "${DATA_DIR}/${COMMENTS_BASE}_average_response_toxicity_by_parent_post_number.csv" \
   --title "${SUBREDDIT} Average Response Toxicity by Parent Post Number"
+
+python -u scripts/community/visualization/cultural_violence_test_4.py \
+  "$PREDICTIONS_CSV" \
+  --output "${VIS_DIR}/${COMMENTS_BASE}_comment_vs_response_toxicity_by_parent_post_number.png" \
+  --summary-output "${DATA_DIR}/${COMMENTS_BASE}_comment_vs_response_toxicity_by_parent_post_number.csv" \
+  --title "${SUBREDDIT} Comment vs Response Toxicity by Parent Post Number"
 
 python -u scripts/community/visualization/plot_response_toxicity_by_user_post_number.py \
   "$PREDICTIONS_CSV" \
