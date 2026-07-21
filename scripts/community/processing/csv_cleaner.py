@@ -13,8 +13,8 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description=(
             "Clean a subreddit CSV by keeping only comment replies, dropping "
-            "deleted users, removing URLs from comment text, and adding each "
-            "user's chronological post_number."
+            "deleted users, removing or dropping URLs from comment text, and "
+            "adding each user's chronological post_number."
         )
     )
     parser.add_argument(
@@ -60,6 +60,11 @@ def parse_args():
         action="store_true",
         help="Replace an existing post-number column if it already exists.",
     )
+    parser.add_argument(
+        "--drop-url-comments",
+        action="store_true",
+        help="Drop comments containing URLs instead of only removing URL text.",
+    )
     return parser.parse_args()
 
 
@@ -80,6 +85,13 @@ def remove_urls(value):
     return text.strip()
 
 
+def contains_url(value):
+    if pd.isna(value):
+        return False
+
+    return bool(URL_PATTERN.search(str(value)))
+
+
 def clean_comments(
     df,
     username_column,
@@ -87,6 +99,7 @@ def clean_comments(
     text_column,
     parent_id_column,
     post_number_column,
+    drop_url_comments,
 ):
     source_order_column = "__source_order"
     clean_username_column = "__clean_username"
@@ -103,6 +116,7 @@ def clean_comments(
         errors="coerce",
     )
     parent_ids = df[parent_id_column].fillna("").astype(str).str.strip()
+    has_url = df[text_column].map(contains_url)
 
     keep_rows = (
         (df[clean_username_column] != "")
@@ -110,10 +124,13 @@ def clean_comments(
         & ~df[clean_username_column].str.lower().isin(DELETED_USERNAMES)
         & parent_ids.str.startswith("t1_")
     )
+    if drop_url_comments:
+        keep_rows = keep_rows & ~has_url
 
     dropped_rows = original_rows - int(keep_rows.sum())
     df = df.loc[keep_rows].copy()
-    df[text_column] = df[text_column].map(remove_urls)
+    if not drop_url_comments:
+        df[text_column] = df[text_column].map(remove_urls)
 
     df[post_number_column] = pd.Series(pd.NA, index=df.index, dtype="Int64")
     ordered_index = df.sort_values(
@@ -172,6 +189,7 @@ def main():
         args.text_column,
         args.parent_id_column,
         args.post_number_column,
+        args.drop_url_comments,
     )
 
     output_csv.parent.mkdir(parents=True, exist_ok=True)

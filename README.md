@@ -49,6 +49,16 @@ In the examples below:
 <Username>      Reddit username to inspect individually.
 ```
 
+The Slurm runner scripts use one canonical comments base derived from the
+subreddit name:
+
+```text
+<comments_base> = lowercase(<Subreddit>) + "_comments"
+```
+
+For example, `Ramen` writes files such as
+`data/subreddits/Ramen/ramen_comments_cleaned.csv`.
+
 ## Data Flow
 
 For each subreddit, the full workflow is:
@@ -56,7 +66,9 @@ For each subreddit, the full workflow is:
 ```text
 raw comment dump or plain-text source
   -> data/subreddits/<Subreddit>/<comments_base>.csv
-  -> data/subreddits/<Subreddit>/<comments_base>_detoxify_unbiased_predictions.csv
+  -> data/subreddits/<Subreddit>/<comments_base>_cleaned.csv
+  -> data/subreddits/<Subreddit>/<comments_base>_cleaned_detoxify_unbiased_predictions.csv
+  -> data/subreddits/<Subreddit>/<comments_base>_cleaned_toxicity_above_0_5.csv
   -> community-level CSV summaries and PNG visualizations
   -> data/subreddits/<Subreddit>/users/*.csv
   -> individual-user CSV summaries and PNG visualizations
@@ -106,7 +118,25 @@ python scripts/format_reddit_comments_zst.py \
 
 ## 2. Run Detoxify
 
-Score every comment and write a predictions CSV:
+On Slurm, convert a `.zst` dump, drop deleted users and URL-containing
+comments, score the cleaned CSV with Detoxify, and write a toxic-comments CSV:
+
+```bash
+sbatch scripts/run_detoxify_on_csv.sh \
+  data/subreddits/<Subreddit>/<comments_base>.zst
+```
+
+This writes:
+
+```text
+data/subreddits/<Subreddit>/<comments_base>.csv
+data/subreddits/<Subreddit>/<comments_base>_cleaned.csv
+data/subreddits/<Subreddit>/<comments_base>_cleaned_detoxify_unbiased_predictions.csv
+data/subreddits/<Subreddit>/<comments_base>_cleaned_toxicity_above_0_5.csv
+```
+
+To run the Python scorer manually, score every comment and write a predictions
+CSV:
 
 ```bash
 python scripts/run_detoxify_on_csv.py \
@@ -132,10 +162,17 @@ python scripts/run_detoxify_on_csv.py \
 
 ## 3. Community-Level Processing
 
-Set the predictions path once mentally as:
+On Slurm, run the community processing and visualization workflow with just the
+subreddit folder name:
+
+```bash
+sbatch scripts/run_community_processing.sh <Subreddit>
+```
+
+For the Slurm workflow, set the predictions path once mentally as:
 
 ```text
-data/subreddits/<Subreddit>/<comments_base>_detoxify_unbiased_predictions.csv
+data/subreddits/<Subreddit>/<comments_base>_cleaned_detoxify_unbiased_predictions.csv
 ```
 
 Compute the percent of comments above a toxicity threshold for each Detoxify
