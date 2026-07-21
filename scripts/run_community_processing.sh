@@ -9,10 +9,17 @@
 #SBATCH  --cpus-per-task=4 
 #SBATCH  --time=02:00:00 
 
+if [ "$#" -ne 2 ]; then
+  echo "Usage: $0 <Subreddit> <comments_base>"
+  exit 1
+fi
+
+SUBREDDIT="$1"
+COMMENTS_BASE="$2"
+
 # compute toxicity percentages for all comments in a csv
 python -u /home/wwalsh/detoxify_performance/scripts/community/processing/compute_toxicity_percentages.py \
-  data/subreddits/<Subreddit>/<comments_base>_detoxify_unbiased_predictions.csv \
+  "data/subreddits/${SUBREDDIT}/${COMMENTS_BASE}_detoxify_unbiased_predictions.csv" \
   --threshold 0.8 \
-  --plot-output visualizations/subreddits/<Subreddit>/<comments_base>_toxicity_percentages_threshold_0.8.png
-
+  --plot-output "visualizations/subreddits/${SUBREDDIT}/${COMMENTS_BASE}_toxicity_percentages_threshold_0.8.png"
 
