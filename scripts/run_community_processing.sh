@@ -29,11 +29,12 @@ cd "$PROJECT_ROOT"
 DATA_DIR="data/subreddits/${SUBREDDIT}"
 VIS_DIR="visualizations/subreddits/${SUBREDDIT}"
 USERS_DIR="${DATA_DIR}/users"
+TROLLS_COMMUNITY_CSV="data/subreddits/trolls_community.csv"
+TROLLS_COMMUNITY_PNG="visualizations/trolls_community_percent_trolls.png"
 
 CLEANED_CSV="${DATA_DIR}/${COMMENTS_BASE}_cleaned.csv"
 PREDICTIONS_CSV="${DATA_DIR}/${COMMENTS_BASE}_cleaned_detoxify_unbiased_predictions.csv"
 TOXIC_CSV="${DATA_DIR}/${COMMENTS_BASE}_cleaned_toxicity_above_0_5.csv"
-TROLL_COUNT_CSV="${DATA_DIR}/${COMMENTS_BASE}_troll_count.csv"
 
 if [ ! -f "$PREDICTIONS_CSV" ]; then
   echo "Missing predictions CSV: $PREDICTIONS_CSV"
@@ -68,7 +69,9 @@ python -u scripts/community/processing/filter_toxic_comments.py \
 
 python -u scripts/community/processing/troll_count.py \
   "$PREDICTIONS_CSV" \
-  --output "$TROLL_COUNT_CSV" \
+  --output "$TROLLS_COMMUNITY_CSV" \
+  --plot-output "$TROLLS_COMMUNITY_PNG" \
+  --subreddit "$SUBREDDIT" \
   --threshold "${TROLL_THRESHOLD:-0.25}"
 
 python -u scripts/community/processing/split_csv_by_active_users.py \
