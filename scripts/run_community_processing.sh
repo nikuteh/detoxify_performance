@@ -33,6 +33,7 @@ USERS_DIR="${DATA_DIR}/users"
 CLEANED_CSV="${DATA_DIR}/${COMMENTS_BASE}_cleaned.csv"
 PREDICTIONS_CSV="${DATA_DIR}/${COMMENTS_BASE}_cleaned_detoxify_unbiased_predictions.csv"
 TOXIC_CSV="${DATA_DIR}/${COMMENTS_BASE}_cleaned_toxicity_above_0_5.csv"
+TROLL_COUNT_CSV="${DATA_DIR}/${COMMENTS_BASE}_troll_count.csv"
 
 if [ ! -f "$PREDICTIONS_CSV" ]; then
   echo "Missing predictions CSV: $PREDICTIONS_CSV"
@@ -64,6 +65,11 @@ python -u scripts/community/processing/filter_toxic_comments.py \
   "$PREDICTIONS_CSV" \
   --output "$TOXIC_CSV" \
   --threshold 0.5
+
+python -u scripts/community/processing/troll_count.py \
+  "$PREDICTIONS_CSV" \
+  --output "$TROLL_COUNT_CSV" \
+  --threshold "${TROLL_THRESHOLD:-0.25}"
 
 python -u scripts/community/processing/split_csv_by_active_users.py \
   "$PREDICTIONS_CSV" \
