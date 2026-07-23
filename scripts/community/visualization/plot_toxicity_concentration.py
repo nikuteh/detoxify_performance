@@ -258,7 +258,6 @@ def plot_top_users(users, counts, output_png, title, top_n):
         bars,
         plot_data["toxic_comment_count"],
         plot_data["comment_count"],
-        strict=False,
     ):
         ax.text(
             toxic_count + 0.08,

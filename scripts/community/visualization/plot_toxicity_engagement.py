@@ -214,7 +214,7 @@ def plot_engagement(summary, output_png, title):
         color=colors,
         edgecolor="white",
     )
-    for bar, value in zip(bars, summary["average_direct_replies"], strict=False):
+    for bar, value in zip(bars, summary["average_direct_replies"]):
         axes[0].text(
             bar.get_x() + bar.get_width() / 2,
             value + 0.02,
@@ -235,7 +235,6 @@ def plot_engagement(summary, output_png, title):
     for bar, value in zip(
         bars,
         summary["percent_with_any_direct_reply"],
-        strict=False,
     ):
         axes[1].text(
             bar.get_x() + bar.get_width() / 2,

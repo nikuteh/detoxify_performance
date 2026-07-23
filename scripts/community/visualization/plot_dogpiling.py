@@ -284,7 +284,6 @@ def plot_dogpiling(summary, output_png, title, top_n):
         bars,
         plot_data["toxic_direct_replies"],
         plot_data["total_direct_replies"],
-        strict=False,
     ):
         ax.text(
             toxic_count + 0.08,

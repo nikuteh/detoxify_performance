@@ -176,9 +176,7 @@ def compute_reply_depths(comment_ids, parent_by_id):
 
 
 def summarize_by_depth(df, score_column, threshold, max_depth, min_comments_per_depth):
-    parent_by_id = dict(
-        zip(df["normalized_comment_id"], df["normalized_parent_id"], strict=False)
-    )
+    parent_by_id = dict(zip(df["normalized_comment_id"], df["normalized_parent_id"]))
     depths = compute_reply_depths(df["normalized_comment_id"].tolist(), parent_by_id)
 
     working = df.copy()

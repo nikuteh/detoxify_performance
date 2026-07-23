@@ -177,7 +177,7 @@ def plot_authority(summary, output_png, title, threshold):
         edgecolor="white",
         label="Comment-weighted average toxicity",
     )
-    for bar, users in zip(bars, summary["user_count"], strict=False):
+    for bar, users in zip(bars, summary["user_count"]):
         ax.text(
             bar.get_x() + bar.get_width() / 2,
             bar.get_height() + 0.002,

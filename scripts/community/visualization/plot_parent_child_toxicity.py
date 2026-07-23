@@ -215,7 +215,6 @@ def plot_contagion(summary, output_png, title, threshold):
         bars,
         summary["percent_replies_toxic"],
         summary["matched_replies"],
-        strict=False,
     ):
         ax.text(
             bar.get_x() + bar.get_width() / 2,
