@@ -66,8 +66,8 @@ def parse_args():
         type=int,
         default=1,
         help=(
-            "Minimum total comments required for the percent-toxic top-users "
-            "chart. Default: 1."
+            "Minimum total comments required for users to appear in the "
+            "percent-toxic chart. Default: 1."
         ),
     )
     parser.add_argument(
@@ -302,21 +302,18 @@ def plot_top_percent_users(users, counts, output_png, title, top_n, min_comments
     plt = configure_matplotlib()
     output_png.parent.mkdir(parents=True, exist_ok=True)
 
-    eligible = users[users["comment_count"] >= min_comments].copy()
-    eligible = eligible.sort_values(
-        ["percent_toxic_comments", "toxic_comment_count", "comment_count"],
-        ascending=[False, False, False],
-    )
+    eligible = users[
+        (users["toxic_comment_count"] > 0) & (users["comment_count"] >= min_comments)
+    ].copy()
     plot_data = eligible.head(top_n).iloc[::-1].copy()
     if plot_data.empty:
         plot_empty(output_png, title)
         return
 
     plot_data["label"] = (
-        plot_data["username"].astype(str).str.slice(0, 22)
-        + " ("
-        + plot_data["comment_count"].astype(int).astype(str)
-        + ")"
+        plot_data["rank"].astype(str)
+        + ". "
+        + plot_data["username"].astype(str).str.slice(0, 22)
     )
 
     fig_height = max(6, 0.42 * len(plot_data) + 2)
@@ -346,7 +343,7 @@ def plot_top_percent_users(users, counts, output_png, title, top_n, min_comments
 
     ax.set_title(title, pad=12)
     ax.set_xlabel("Percent of user's comments above toxicity threshold")
-    ax.set_ylabel("User (total comments)")
+    ax.set_ylabel("User ranked by toxic-comment count")
     ax.set_xlim(
         0,
         min(100, max(1, float(plot_data["percent_toxic_comments"].max()) * 1.2)),
@@ -406,7 +403,7 @@ def main():
         users,
         counts,
         top_percent_users_output,
-        f"{title_prefix}: Top Toxicity Contributors by Percent Toxic",
+        f"{title_prefix}: Top Toxicity Contributors Measured by Percent Toxic",
         args.top_n,
         args.min_comments_for_percent,
     )
