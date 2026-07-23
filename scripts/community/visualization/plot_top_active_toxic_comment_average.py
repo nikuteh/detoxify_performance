@@ -30,6 +30,30 @@ def parse_args():
         help="Optional output CSV with the two cohort averages.",
     )
     parser.add_argument(
+        "--histogram-output",
+        type=Path,
+        help=(
+            "Optional output PNG for toxic-comment counts by post number among "
+            "the top active users."
+        ),
+    )
+    parser.add_argument(
+        "--normalized-histogram-output",
+        type=Path,
+        help=(
+            "Optional output PNG for toxic-comment percent by post number among "
+            "the top active users."
+        ),
+    )
+    parser.add_argument(
+        "--histogram-summary-output",
+        type=Path,
+        help=(
+            "Optional output CSV with toxic-comment counts and normalized "
+            "percent by post number."
+        ),
+    )
+    parser.add_argument(
         "--username-column",
         default="username",
         help="Column containing usernames. Default: username.",
@@ -38,6 +62,11 @@ def parse_args():
         "--score-column",
         default="toxicity",
         help="Toxicity score column. Default: toxicity.",
+    )
+    parser.add_argument(
+        "--timestamp-column",
+        default="timestamp",
+        help="Column containing Unix timestamps. Default: timestamp.",
     )
     parser.add_argument(
         "--threshold",
@@ -50,6 +79,12 @@ def parse_args():
         type=int,
         default=100,
         help="Number of most active users to compare. Default: 100.",
+    )
+    parser.add_argument(
+        "--max-post-number",
+        type=int,
+        default=100,
+        help="Maximum per-user post/comment number for histograms. Default: 100.",
     )
     parser.add_argument(
         "--include-deleted",
@@ -77,12 +112,24 @@ def infer_visualization_output(input_csv, filename):
 
 
 def load_user_toxic_counts(args):
-    df = pd.read_csv(args.input_csv, usecols=[args.username_column, args.score_column])
+    df = pd.read_csv(
+        args.input_csv,
+        usecols=[args.username_column, args.timestamp_column, args.score_column],
+    )
+    df["source_order"] = range(len(df))
     df[args.username_column] = (
         df[args.username_column].fillna("").astype(str).str.strip()
     )
+    df[args.timestamp_column] = pd.to_numeric(
+        df[args.timestamp_column],
+        errors="coerce",
+    )
     df[args.score_column] = pd.to_numeric(df[args.score_column], errors="coerce")
-    df = df[(df[args.username_column] != "") & df[args.score_column].notna()].copy()
+    df = df[
+        (df[args.username_column] != "")
+        & df[args.timestamp_column].notna()
+        & df[args.score_column].notna()
+    ].copy()
 
     if not args.include_deleted:
         df = df[~df[args.username_column].str.lower().isin(DELETED_USERNAMES)].copy()
@@ -103,7 +150,7 @@ def load_user_toxic_counts(args):
     return users.sort_values(
         ["comment_count", "toxic_comment_count", "username"],
         ascending=[False, False, True],
-    ).reset_index(drop=True)
+    ).reset_index(drop=True), df
 
 
 def summarize_cohorts(users, args):
@@ -136,6 +183,46 @@ def summarize_cohorts(users, args):
         )
 
     return pd.DataFrame(rows)
+
+
+def summarize_top_active_by_post_number(df, users, args):
+    top_active_users = users.head(args.top_active_users).copy()
+    top_usernames = set(top_active_users["username"])
+    selected = df[df[args.username_column].isin(top_usernames)].copy()
+    selected = selected.sort_values(
+        [args.username_column, args.timestamp_column, "source_order"]
+    )
+    selected["post_number"] = selected.groupby(args.username_column).cumcount() + 1
+    selected = selected[selected["post_number"] <= args.max_post_number].copy()
+
+    if selected.empty:
+        raise SystemExit("No top-active-user comments left for post-number histograms")
+
+    summary = (
+        selected.groupby("post_number")
+        .agg(
+            total_comments=(args.score_column, "size"),
+            toxic_comment_count=("above_threshold", "sum"),
+            contributing_users=(args.username_column, "nunique"),
+        )
+        .reset_index()
+    )
+    all_post_numbers = pd.DataFrame(
+        {"post_number": range(1, args.max_post_number + 1)}
+    )
+    summary = all_post_numbers.merge(summary, on="post_number", how="left")
+    fill_columns = ["total_comments", "toxic_comment_count", "contributing_users"]
+    summary[fill_columns] = summary[fill_columns].fillna(0).astype(int)
+    summary["percent_toxic_comments"] = 0.0
+    has_comments = summary["total_comments"] > 0
+    summary.loc[has_comments, "percent_toxic_comments"] = (
+        summary.loc[has_comments, "toxic_comment_count"]
+        / summary.loc[has_comments, "total_comments"]
+        * 100
+    )
+    summary["selected_top_active_users"] = len(top_active_users)
+    summary["threshold"] = args.threshold
+    return summary
 
 
 def configure_matplotlib():
@@ -193,25 +280,91 @@ def plot_average_toxic_comments(summary, output_png, title):
     plt.close(fig)
 
 
+def plot_post_number_histogram(summary, output_png, title, normalized):
+    plt = configure_matplotlib()
+    output_png.parent.mkdir(parents=True, exist_ok=True)
+
+    fig, ax = plt.subplots(figsize=(14, 6), dpi=160)
+    ax.set_facecolor("#FAFAFA")
+    fig.patch.set_facecolor("white")
+
+    y_column = "percent_toxic_comments" if normalized else "toxic_comment_count"
+    y_values = summary[y_column]
+    ax.bar(
+        summary["post_number"],
+        y_values,
+        color="#F58518" if normalized else "#E45756",
+        edgecolor="white",
+        linewidth=0.25,
+        width=0.9,
+    )
+
+    ax.set_title(title, pad=12)
+    ax.set_xlabel("Post/comment number for each top active user")
+    if normalized:
+        ax.set_ylabel("Percent of comments above toxicity threshold")
+        ax.set_ylim(0, min(100, max(5, float(y_values.max()) * 1.2)))
+    else:
+        ax.set_ylabel("Toxic comment count")
+        ax.set_ylim(0, max(1, float(y_values.max()) * 1.2))
+    ax.set_xlim(0.5, float(summary["post_number"].max()) + 0.5)
+    ax.grid(True, axis="y", color="#E2E2E2", linewidth=0.8)
+    ax.text(
+        1,
+        -0.13,
+        (
+            "Top active users included: "
+            f"{int(summary['selected_top_active_users'].iloc[0]):,}"
+        ),
+        transform=ax.transAxes,
+        ha="right",
+        va="top",
+        fontsize=9,
+        color="#555555",
+    )
+
+    fig.tight_layout()
+    fig.savefig(output_png)
+    plt.close(fig)
+
+
 def main():
     args = parse_args()
     if not args.input_csv.is_file():
         raise SystemExit(f"Input file does not exist: {args.input_csv}")
     if args.top_active_users < 1:
         raise SystemExit("--top-active-users must be at least 1")
+    if args.max_post_number < 1:
+        raise SystemExit("--max-post-number must be at least 1")
 
     columns = set(pd.read_csv(args.input_csv, nrows=0).columns)
-    required = {args.username_column, args.score_column}
+    required = {args.username_column, args.timestamp_column, args.score_column}
     missing = sorted(required - columns)
     if missing:
         raise SystemExit(
             f"{args.input_csv} is missing required column(s): {', '.join(missing)}"
         )
 
-    summary = summarize_cohorts(load_user_toxic_counts(args), args)
+    users, comments = load_user_toxic_counts(args)
+    summary = summarize_cohorts(users, args)
+    post_number_summary = summarize_top_active_by_post_number(comments, users, args)
     output_png = args.output or infer_visualization_output(
         args.input_csv,
         f"{args.input_csv.stem}_top_active_toxic_comment_average.png",
+    )
+    histogram_output = args.histogram_output or infer_visualization_output(
+        args.input_csv,
+        f"{args.input_csv.stem}_top_active_toxic_comments_by_post_number.png",
+    )
+    normalized_histogram_output = (
+        args.normalized_histogram_output
+        or infer_visualization_output(
+            args.input_csv,
+            (
+                f"{args.input_csv.stem}_top_active_toxic_comments_by_post_number_"
+                "normalized.png"
+            ),
+        )
     )
     title = args.title or (
         f"{args.input_csv.stem}: Toxic Comments for Top Active Users vs All Users"
@@ -222,8 +375,33 @@ def main():
         summary.to_csv(args.summary_output, index=False)
         print(f"Saved {args.summary_output}")
 
+    if args.histogram_summary_output:
+        args.histogram_summary_output.parent.mkdir(parents=True, exist_ok=True)
+        post_number_summary.to_csv(args.histogram_summary_output, index=False)
+        print(f"Saved {args.histogram_summary_output}")
+
     plot_average_toxic_comments(summary, output_png, title)
+    plot_post_number_histogram(
+        post_number_summary,
+        histogram_output,
+        (
+            f"{args.input_csv.stem}: Top Active Users Toxic Comments "
+            "by Post Number"
+        ),
+        normalized=False,
+    )
+    plot_post_number_histogram(
+        post_number_summary,
+        normalized_histogram_output,
+        (
+            f"{args.input_csv.stem}: Top Active Users Toxic Comment Rate "
+            "by Post Number"
+        ),
+        normalized=True,
+    )
     print(f"Saved {output_png}")
+    print(f"Saved {histogram_output}")
+    print(f"Saved {normalized_histogram_output}")
     print(f"Cohorts plotted: {len(summary):,}")
 
 

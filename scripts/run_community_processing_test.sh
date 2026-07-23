@@ -129,8 +129,12 @@ python -u scripts/community/visualization/plot_top_active_toxic_comment_average.
   "$PREDICTIONS_CSV" \
   --output "${VIS_DIR}/${COMMENTS_BASE}_idea_16_top_active_vs_all_toxic_comment_average.png" \
   --summary-output "${DATA_DIR}/${COMMENTS_BASE}_idea_16_top_active_vs_all_toxic_comment_average.csv" \
+  --histogram-output "${VIS_DIR}/${COMMENTS_BASE}_idea_16_top_active_toxic_comments_by_post_number.png" \
+  --normalized-histogram-output "${VIS_DIR}/${COMMENTS_BASE}_idea_16_top_active_toxic_comments_by_post_number_normalized.png" \
+  --histogram-summary-output "${DATA_DIR}/${COMMENTS_BASE}_idea_16_top_active_toxic_comments_by_post_number.csv" \
   --title "${SUBREDDIT} Top Active Users vs All Users: Average Toxic Comment Count" \
   --threshold "$THRESHOLD" \
-  --top-active-users "${TOP_ACTIVE_TOXIC_AVERAGE_USERS:-100}"
+  --top-active-users "${TOP_ACTIVE_TOXIC_AVERAGE_USERS:-100}" \
+  --max-post-number "${TOP_ACTIVE_TOXIC_POST_NUMBER_MAX:-100}"
 
 echo "Community processing test analyses complete for ${SUBREDDIT}"
