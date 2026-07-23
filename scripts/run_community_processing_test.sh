@@ -52,6 +52,17 @@ python -u scripts/community/visualization/plot_toxicity_over_time.py \
   --title "${SUBREDDIT} Toxicity Spike Timeline" \
   --time-bin "${SPIKE_TIME_BIN:-MS}"
 
+# Toxic comment volume by month.
+python -u scripts/community/visualization/plot_toxic_comment_volume_over_time.py \
+  "$PREDICTIONS_CSV" \
+  --bar-output "${VIS_DIR}/${COMMENTS_BASE}_toxic_comment_volume_by_month_bar.png" \
+  --line-output "${VIS_DIR}/${COMMENTS_BASE}_toxic_comment_volume_by_month_line.png" \
+  --summary-output "${DATA_DIR}/${COMMENTS_BASE}_toxic_comment_volume_by_month.csv" \
+  --bar-title "${SUBREDDIT} Toxic Comment Volume by Month" \
+  --line-title "${SUBREDDIT} Toxic Comment Volume by Month" \
+  --threshold "$THRESHOLD" \
+  --time-bin "${TOXIC_VOLUME_TIME_BIN:-MS}"
+
 # Idea 3: thread escalation by observed reply-chain depth.
 python -u scripts/community/visualization/plot_thread_escalation.py \
   "$PREDICTIONS_CSV" \
