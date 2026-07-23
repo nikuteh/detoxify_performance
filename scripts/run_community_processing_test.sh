@@ -57,9 +57,11 @@ python -u scripts/community/visualization/plot_toxic_comment_volume_over_time.py
   "$PREDICTIONS_CSV" \
   --bar-output "${VIS_DIR}/${COMMENTS_BASE}_toxic_comment_volume_by_month_bar.png" \
   --line-output "${VIS_DIR}/${COMMENTS_BASE}_toxic_comment_volume_by_month_line.png" \
+  --percent-line-output "${VIS_DIR}/${COMMENTS_BASE}_toxic_comment_percent_by_month_line.png" \
   --summary-output "${DATA_DIR}/${COMMENTS_BASE}_toxic_comment_volume_by_month.csv" \
   --bar-title "${SUBREDDIT} Toxic Comment Volume by Month" \
   --line-title "${SUBREDDIT} Toxic Comment Volume by Month" \
+  --percent-line-title "${SUBREDDIT} Percent Toxic Comments by Month" \
   --threshold "$THRESHOLD" \
   --time-bin "${TOXIC_VOLUME_TIME_BIN:-MS}"
 
