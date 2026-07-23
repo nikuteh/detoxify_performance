@@ -124,4 +124,13 @@ python -u scripts/community/visualization/plot_toxicity_concentration.py \
   --top-n "${CONCENTRATION_TOP_N:-20}" \
   --min-comments-for-percent "${CONCENTRATION_MIN_COMMENTS_FOR_PERCENT:-1}"
 
+# Idea 16: average toxic-comment counts for top active users vs all users.
+python -u scripts/community/visualization/plot_top_active_toxic_comment_average.py \
+  "$PREDICTIONS_CSV" \
+  --output "${VIS_DIR}/${COMMENTS_BASE}_idea_16_top_active_vs_all_toxic_comment_average.png" \
+  --summary-output "${DATA_DIR}/${COMMENTS_BASE}_idea_16_top_active_vs_all_toxic_comment_average.csv" \
+  --title "${SUBREDDIT} Top Active Users vs All Users: Average Toxic Comment Count" \
+  --threshold "$THRESHOLD" \
+  --top-active-users "${TOP_ACTIVE_TOXIC_AVERAGE_USERS:-100}"
+
 echo "Community processing test analyses complete for ${SUBREDDIT}"
