@@ -14,8 +14,8 @@ COMMENT_ID_COLUMNS = ("comment_id", "id", "name")
 def parse_args():
     parser = argparse.ArgumentParser(
         description=(
-            "Compare direct-reply engagement received by toxic parent comments "
-            "against non-toxic parent comments."
+            "Plot how often parent comments receive direct replies across "
+            "the 0-to-1 toxicity score range."
         )
     )
     parser.add_argument("input_csv", type=Path, help="Community predictions CSV.")
@@ -27,7 +27,7 @@ def parse_args():
     parser.add_argument(
         "--summary-output",
         type=Path,
-        help="Optional output CSV summarizing engagement by parent toxicity group.",
+        help="Optional output CSV summarizing engagement by parent toxicity bin.",
     )
     parser.add_argument(
         "--comment-id-column",
@@ -47,7 +47,22 @@ def parse_args():
         "--threshold",
         type=float,
         default=0.5,
-        help="Toxicity threshold. Default: 0.5.",
+        help="Toxicity threshold retained in the summary metadata. Default: 0.5.",
+    )
+    parser.add_argument(
+        "--toxicity-bins",
+        type=int,
+        default=20,
+        help="Number of fixed-width toxicity bins between 0 and 1. Default: 20.",
+    )
+    parser.add_argument(
+        "--min-comments-per-bin",
+        type=int,
+        default=1,
+        help=(
+            "Minimum parent comments required in a toxicity bin to plot it. "
+            "Default: 1."
+        ),
     )
     parser.add_argument(
         "--title",
@@ -107,8 +122,19 @@ def normalize_parent_id(value):
     return ""
 
 
-def summarize_engagement(input_csv, comment_id_column, parent_id_column, score_column, threshold):
-    df = pd.read_csv(input_csv, usecols=[comment_id_column, parent_id_column, score_column])
+def summarize_engagement(
+    input_csv,
+    comment_id_column,
+    parent_id_column,
+    score_column,
+    threshold,
+    toxicity_bins,
+    min_comments_per_bin,
+):
+    df = pd.read_csv(
+        input_csv,
+        usecols=[comment_id_column, parent_id_column, score_column],
+    )
     df[score_column] = pd.to_numeric(df[score_column], errors="coerce")
     df["normalized_comment_id"] = df[comment_id_column].map(normalize_comment_id)
     df["normalized_parent_id"] = df[parent_id_column].map(normalize_parent_id)
@@ -130,12 +156,10 @@ def summarize_engagement(input_csv, comment_id_column, parent_id_column, score_c
     )
 
     replies = df[df["normalized_parent_id"] != ""].copy()
-    replies["reply_above_threshold"] = replies[score_column] > threshold
     reply_counts = (
         replies.groupby("normalized_parent_id")
         .agg(
             direct_reply_count=(score_column, "size"),
-            toxic_direct_reply_count=("reply_above_threshold", "sum"),
             average_direct_reply_toxicity=(score_column, "mean"),
         )
         .reset_index()
@@ -145,41 +169,39 @@ def summarize_engagement(input_csv, comment_id_column, parent_id_column, score_c
     engagement["direct_reply_count"] = (
         engagement["direct_reply_count"].fillna(0).astype(int)
     )
-    engagement["toxic_direct_reply_count"] = (
-        engagement["toxic_direct_reply_count"].fillna(0).astype(int)
-    )
     engagement["has_direct_reply"] = engagement["direct_reply_count"] > 0
-    engagement["has_toxic_direct_reply"] = engagement["toxic_direct_reply_count"] > 0
-    engagement["parent_above_threshold"] = engagement["parent_toxicity"] > threshold
-    engagement["parent_group"] = engagement["parent_above_threshold"].map(
-        {
-            False: f"Parent <= {threshold:g}",
-            True: f"Parent > {threshold:g}",
-        }
+    clipped_toxicity = engagement["parent_toxicity"].clip(lower=0, upper=1)
+    engagement["toxicity_bin"] = (clipped_toxicity * toxicity_bins).astype(int)
+    engagement.loc[engagement["toxicity_bin"] == toxicity_bins, "toxicity_bin"] = (
+        toxicity_bins - 1
     )
 
     summary = (
-        engagement.groupby("parent_group", sort=False)
+        engagement.groupby("toxicity_bin")
         .agg(
             parent_comments=("parent_toxicity", "size"),
             average_parent_toxicity=("parent_toxicity", "mean"),
             average_direct_replies=("direct_reply_count", "mean"),
             median_direct_replies=("direct_reply_count", "median"),
             parent_comments_with_replies=("has_direct_reply", "sum"),
-            average_toxic_direct_replies=("toxic_direct_reply_count", "mean"),
-            parent_comments_with_toxic_replies=("has_toxic_direct_reply", "sum"),
         )
         .reset_index()
+        .sort_values("toxicity_bin")
     )
+    bin_width = 1 / toxicity_bins
+    summary["toxicity_bin_min"] = summary["toxicity_bin"] * bin_width
+    summary["toxicity_bin_max"] = summary["toxicity_bin_min"] + bin_width
+    summary["toxicity_midpoint"] = (
+        summary["toxicity_bin_min"] + summary["toxicity_bin_max"]
+    ) / 2
     summary["percent_with_any_direct_reply"] = (
         summary["parent_comments_with_replies"] / summary["parent_comments"] * 100
     )
-    summary["percent_with_toxic_direct_reply"] = (
-        summary["parent_comments_with_toxic_replies"]
-        / summary["parent_comments"]
-        * 100
-    )
     summary["threshold"] = threshold
+    summary = summary[summary["parent_comments"] >= min_comments_per_bin].copy()
+    if summary.empty:
+        raise SystemExit("No toxicity bins met the plotting filters")
+
     return summary
 
 
@@ -200,55 +222,43 @@ def plot_engagement(summary, output_png, title):
     plt = configure_matplotlib()
     output_png.parent.mkdir(parents=True, exist_ok=True)
 
-    fig, axes = plt.subplots(1, 2, figsize=(13, 6), dpi=160)
+    fig, ax = plt.subplots(figsize=(13, 7), dpi=160)
+    ax.set_facecolor("#FAFAFA")
     fig.patch.set_facecolor("white")
 
-    for ax in axes:
-        ax.set_facecolor("#FAFAFA")
-        ax.grid(True, axis="y", color="#E2E2E2", linewidth=0.8)
-
-    colors = ["#4C78A8", "#F58518"][: len(summary)]
-    bars = axes[0].bar(
-        summary["parent_group"],
-        summary["average_direct_replies"],
-        color=colors,
-        edgecolor="white",
-    )
-    for bar, value in zip(bars, summary["average_direct_replies"]):
-        axes[0].text(
-            bar.get_x() + bar.get_width() / 2,
-            value + 0.02,
-            f"{value:.3f}",
-            ha="center",
-            va="bottom",
-            fontsize=9,
-        )
-    axes[0].set_title("Average Direct Replies")
-    axes[0].set_ylabel("Direct replies per parent comment")
-
-    bars = axes[1].bar(
-        summary["parent_group"],
+    ax.plot(
+        summary["toxicity_midpoint"],
         summary["percent_with_any_direct_reply"],
-        color=colors,
-        edgecolor="white",
+        color="#4C78A8",
+        linewidth=2.5,
+        marker="o",
+        markersize=4,
+        label="Received at least one direct reply",
     )
-    for bar, value in zip(
-        bars,
-        summary["percent_with_any_direct_reply"],
-    ):
-        axes[1].text(
-            bar.get_x() + bar.get_width() / 2,
-            value + 0.5,
-            f"{value:.2f}%",
-            ha="center",
-            va="bottom",
-            fontsize=9,
-        )
-    axes[1].set_title("Parents Receiving Any Direct Reply")
-    axes[1].set_ylabel("Percent of parent comments")
-    axes[1].set_ylim(0, max(5, float(summary["percent_with_any_direct_reply"].max()) * 1.25))
+    ax.set_title(title, pad=12)
+    ax.set_xlabel("Parent comment toxicity score")
+    ax.set_ylabel("Percent receiving a direct reply")
+    ax.set_xlim(0, 1)
+    ax.set_ylim(
+        0,
+        min(
+            100,
+            max(5, float(summary["percent_with_any_direct_reply"].max()) * 1.2),
+        ),
+    )
+    ax.grid(True, color="#E2E2E2", linewidth=0.8)
+    ax.legend(frameon=True)
+    ax.text(
+        1,
+        -0.13,
+        f"Toxicity bins plotted: {len(summary):,}",
+        transform=ax.transAxes,
+        ha="right",
+        va="top",
+        fontsize=9,
+        color="#555555",
+    )
 
-    fig.suptitle(title, y=0.98)
     fig.tight_layout()
     fig.savefig(output_png)
     plt.close(fig)
@@ -258,6 +268,10 @@ def main():
     args = parse_args()
     if not args.input_csv.is_file():
         raise SystemExit(f"Input file does not exist: {args.input_csv}")
+    if args.toxicity_bins < 1:
+        raise SystemExit("--toxicity-bins must be at least 1")
+    if args.min_comments_per_bin < 1:
+        raise SystemExit("--min-comments-per-bin must be at least 1")
 
     columns = set(pd.read_csv(args.input_csv, nrows=0).columns)
     comment_id_column = resolve_comment_id_column(columns, args.comment_id_column)
@@ -274,6 +288,8 @@ def main():
         args.parent_id_column,
         args.score_column,
         args.threshold,
+        args.toxicity_bins,
+        args.min_comments_per_bin,
     )
     output_png = args.output or infer_visualization_output(
         args.input_csv,
@@ -288,7 +304,7 @@ def main():
 
     plot_engagement(summary, output_png, title)
     print(f"Saved {output_png}")
-    print(f"Parent toxicity groups plotted: {len(summary):,}")
+    print(f"Toxicity bins plotted: {len(summary):,}")
 
 
 if __name__ == "__main__":

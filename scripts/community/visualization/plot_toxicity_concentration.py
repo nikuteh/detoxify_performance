@@ -30,6 +30,11 @@ def parse_args():
         help="Output PNG for top toxic-comment contributors.",
     )
     parser.add_argument(
+        "--top-percent-users-output",
+        type=Path,
+        help="Output PNG for top users ranked by percent toxic comments.",
+    )
+    parser.add_argument(
         "--summary-output",
         type=Path,
         help="Optional output CSV with ranked users and cumulative shares.",
@@ -55,6 +60,15 @@ def parse_args():
         type=int,
         default=20,
         help="Number of users for top-users bar chart. Default: 20.",
+    )
+    parser.add_argument(
+        "--min-comments-for-percent",
+        type=int,
+        default=1,
+        help=(
+            "Minimum total comments required for the percent-toxic top-users "
+            "chart. Default: 1."
+        ),
     )
     parser.add_argument(
         "--include-deleted",
@@ -106,6 +120,9 @@ def summarize_concentration(args):
         )
         .reset_index()
         .rename(columns={args.username_column: "username"})
+    )
+    users["percent_toxic_comments"] = (
+        users["toxic_comment_count"] / users["comment_count"] * 100
     )
     users = users.sort_values(
         ["toxic_comment_count", "average_toxicity", "comment_count"],
@@ -277,12 +294,77 @@ def plot_top_users(users, counts, output_png, title, top_n):
     plt.close(fig)
 
 
+def plot_top_percent_users(users, counts, output_png, title, top_n, min_comments):
+    if counts["total_toxic_comments"] == 0:
+        plot_empty(output_png, title)
+        return
+
+    plt = configure_matplotlib()
+    output_png.parent.mkdir(parents=True, exist_ok=True)
+
+    eligible = users[users["comment_count"] >= min_comments].copy()
+    eligible = eligible.sort_values(
+        ["percent_toxic_comments", "toxic_comment_count", "comment_count"],
+        ascending=[False, False, False],
+    )
+    plot_data = eligible.head(top_n).iloc[::-1].copy()
+    if plot_data.empty:
+        plot_empty(output_png, title)
+        return
+
+    plot_data["label"] = (
+        plot_data["username"].astype(str).str.slice(0, 22)
+        + " ("
+        + plot_data["comment_count"].astype(int).astype(str)
+        + ")"
+    )
+
+    fig_height = max(6, 0.42 * len(plot_data) + 2)
+    fig, ax = plt.subplots(figsize=(12, fig_height), dpi=160)
+    ax.set_facecolor("#FAFAFA")
+    fig.patch.set_facecolor("white")
+
+    bars = ax.barh(
+        plot_data["label"],
+        plot_data["percent_toxic_comments"],
+        color="#B279A2",
+        edgecolor="white",
+    )
+    for bar, percent, toxic_count, comment_count in zip(
+        bars,
+        plot_data["percent_toxic_comments"],
+        plot_data["toxic_comment_count"],
+        plot_data["comment_count"],
+    ):
+        ax.text(
+            percent + 0.4,
+            bar.get_y() + bar.get_height() / 2,
+            f"{percent:.1f}% ({int(toxic_count):,}/{int(comment_count):,})",
+            va="center",
+            fontsize=9,
+        )
+
+    ax.set_title(title, pad=12)
+    ax.set_xlabel("Percent of user's comments above toxicity threshold")
+    ax.set_ylabel("User (total comments)")
+    ax.set_xlim(
+        0,
+        min(100, max(1, float(plot_data["percent_toxic_comments"].max()) * 1.2)),
+    )
+    ax.grid(True, axis="x", color="#E2E2E2", linewidth=0.8)
+    fig.tight_layout()
+    fig.savefig(output_png)
+    plt.close(fig)
+
+
 def main():
     args = parse_args()
     if not args.input_csv.is_file():
         raise SystemExit(f"Input file does not exist: {args.input_csv}")
     if args.top_n < 1:
         raise SystemExit("--top-n must be at least 1")
+    if args.min_comments_for_percent < 1:
+        raise SystemExit("--min-comments-for-percent must be at least 1")
 
     columns = set(pd.read_csv(args.input_csv, nrows=0).columns)
     required = {args.username_column, args.score_column}
@@ -301,6 +383,10 @@ def main():
         args.input_csv,
         f"{args.input_csv.stem}_top_toxicity_contributors.png",
     )
+    top_percent_users_output = args.top_percent_users_output or infer_visualization_output(
+        args.input_csv,
+        f"{args.input_csv.stem}_top_toxicity_contributors_by_percent.png",
+    )
     title_prefix = args.title_prefix or args.input_csv.stem
 
     if args.summary_output:
@@ -316,9 +402,18 @@ def main():
         f"{title_prefix}: Top Toxicity Contributors",
         args.top_n,
     )
+    plot_top_percent_users(
+        users,
+        counts,
+        top_percent_users_output,
+        f"{title_prefix}: Top Toxicity Contributors by Percent Toxic",
+        args.top_n,
+        args.min_comments_for_percent,
+    )
 
     print(f"Saved {curve_output}")
     print(f"Saved {top_users_output}")
+    print(f"Saved {top_percent_users_output}")
     print(f"Users ranked: {counts['total_users']:,}")
     print(f"Toxic comments counted: {counts['total_toxic_comments']:,}")
 

@@ -51,6 +51,22 @@ def parse_args():
         help="Optional output CSV containing the per-time-bin summary.",
     )
     parser.add_argument(
+        "--top-active-average-output",
+        type=Path,
+        help=(
+            "Optional output PNG for average toxicity over elapsed user time "
+            "among the most active users."
+        ),
+    )
+    parser.add_argument(
+        "--top-active-summary-output",
+        type=Path,
+        help=(
+            "Optional output CSV containing the per-time-bin summary for the "
+            "most active users."
+        ),
+    )
+    parser.add_argument(
         "--score-column",
         default="toxicity",
         help="Score column to summarize. Default: toxicity.",
@@ -93,6 +109,15 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--top-active-users",
+        type=int,
+        default=100,
+        help=(
+            "Number of most active users to include when producing the optional "
+            "top-active average plot. Default: 100."
+        ),
+    )
+    parser.add_argument(
         "--include-deleted",
         action="store_true",
         help="Include [deleted] and [removed] usernames.",
@@ -104,6 +129,13 @@ def parse_args():
     parser.add_argument(
         "--percent-title",
         help="Percent-toxic plot title. Default: inferred from input CSV.",
+    )
+    parser.add_argument(
+        "--top-active-average-title",
+        help=(
+            "Top-active-users average-toxicity plot title. Default: inferred "
+            "from input CSV."
+        ),
     )
     return parser.parse_args()
 
@@ -188,6 +220,20 @@ def summarize_by_user_time(df, args):
         raise SystemExit("No elapsed-time numbers met the plotting filters")
 
     return summary
+
+
+def select_top_active_users(df, args):
+    user_counts = (
+        df.groupby(args.username_column)
+        .size()
+        .sort_values(ascending=False)
+        .head(args.top_active_users)
+    )
+    if user_counts.empty:
+        raise SystemExit("No users available for the top-active-users plot")
+
+    top_users = set(user_counts.index)
+    return df[df[args.username_column].isin(top_users)].copy(), len(top_users)
 
 
 def configure_matplotlib():
@@ -313,6 +359,8 @@ def main():
         raise SystemExit("--max-time-number must be at least 1")
     if args.min_comments_per_time < 1:
         raise SystemExit("--min-comments-per-time must be at least 1")
+    if args.top_active_users < 1:
+        raise SystemExit("--top-active-users must be at least 1")
 
     columns = set(pd.read_csv(args.input_csv, nrows=0).columns)
     required = {args.username_column, args.timestamp_column, args.score_column}
@@ -322,7 +370,8 @@ def main():
             f"{args.input_csv} is missing required column(s): {', '.join(missing)}"
         )
 
-    summary = summarize_by_user_time(load_comments(args), args)
+    comments = load_comments(args)
+    summary = summarize_by_user_time(comments, args)
 
     average_output = args.average_output or infer_visualization_output(
         args.input_csv,
@@ -338,11 +387,50 @@ def main():
     percent_title = args.percent_title or (
         f"{args.input_csv.stem}: Percent of Comments Above Toxicity Threshold"
     )
+    top_active_requested = any(
+        (
+            args.top_active_average_output,
+            args.top_active_summary_output,
+            args.top_active_average_title,
+        )
+    )
 
     if args.summary_output:
         args.summary_output.parent.mkdir(parents=True, exist_ok=True)
         summary.to_csv(args.summary_output, index=False)
         print(f"Saved {args.summary_output}")
+
+    if top_active_requested:
+        top_active_comments, selected_user_count = select_top_active_users(
+            comments,
+            args,
+        )
+        top_active_summary = summarize_by_user_time(top_active_comments, args)
+        top_active_output = args.top_active_average_output or infer_visualization_output(
+            args.input_csv,
+            (
+                f"{args.input_csv.stem}_top_{selected_user_count}_active_users_"
+                "average_toxicity_over_user_time.png"
+            ),
+        )
+        top_active_title = args.top_active_average_title or (
+            f"{args.input_csv.stem}: Top {selected_user_count} Active Users "
+            "Average Toxicity Over User Time"
+        )
+
+        if args.top_active_summary_output:
+            args.top_active_summary_output.parent.mkdir(parents=True, exist_ok=True)
+            top_active_summary.to_csv(args.top_active_summary_output, index=False)
+            print(f"Saved {args.top_active_summary_output}")
+
+        plot_average_toxicity(
+            top_active_summary,
+            top_active_output,
+            top_active_title,
+            args.time_unit,
+        )
+        print(f"Saved {top_active_output}")
+        print(f"Top active users selected: {selected_user_count:,}")
 
     plot_average_toxicity(summary, average_output, average_title, args.time_unit)
     plot_percent_toxic(

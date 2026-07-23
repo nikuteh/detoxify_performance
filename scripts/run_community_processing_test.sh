@@ -95,6 +95,10 @@ python -u scripts/community/visualization/plot_all_users_toxicity_over_user_time
   --average-output "${VIS_DIR}/${COMMENTS_BASE}_idea_11_all_users_average_toxicity_over_user_time.png" \
   --percent-output "${VIS_DIR}/${COMMENTS_BASE}_idea_11_all_users_percent_toxic_over_user_time.png" \
   --summary-output "${DATA_DIR}/${COMMENTS_BASE}_idea_11_all_users_toxicity_over_user_time.csv" \
+  --top-active-average-output "${VIS_DIR}/${COMMENTS_BASE}_idea_11_top_100_active_users_average_toxicity_by_week.png" \
+  --top-active-summary-output "${DATA_DIR}/${COMMENTS_BASE}_idea_11_top_100_active_users_average_toxicity_by_week.csv" \
+  --top-active-average-title "${SUBREDDIT} Top 100 Active Users: Average Toxicity by Week" \
+  --top-active-users "${USER_LIFECYCLE_TOP_ACTIVE_USERS:-100}" \
   --threshold "$THRESHOLD" \
   --time-unit "${USER_LIFECYCLE_TIME_UNIT:-week}" \
   --max-time-number "${USER_LIFECYCLE_MAX_TIME:-100}"
@@ -113,9 +117,11 @@ python -u scripts/community/visualization/plot_toxicity_concentration.py \
   "$PREDICTIONS_CSV" \
   --curve-output "${VIS_DIR}/${COMMENTS_BASE}_idea_15_toxicity_concentration_curve.png" \
   --top-users-output "${VIS_DIR}/${COMMENTS_BASE}_idea_15_top_toxicity_contributors.png" \
+  --top-percent-users-output "${VIS_DIR}/${COMMENTS_BASE}_idea_15_top_toxicity_contributors_by_percent.png" \
   --summary-output "${DATA_DIR}/${COMMENTS_BASE}_idea_15_toxicity_concentration.csv" \
   --title-prefix "${SUBREDDIT}" \
   --threshold "$THRESHOLD" \
-  --top-n "${CONCENTRATION_TOP_N:-20}"
+  --top-n "${CONCENTRATION_TOP_N:-20}" \
+  --min-comments-for-percent "${CONCENTRATION_MIN_COMMENTS_FOR_PERCENT:-1}"
 
 echo "Community processing test analyses complete for ${SUBREDDIT}"
