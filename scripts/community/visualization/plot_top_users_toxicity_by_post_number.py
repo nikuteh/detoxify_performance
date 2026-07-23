@@ -72,7 +72,8 @@ def parse_args():
     parser.add_argument(
         "--max-post-number",
         type=int,
-        help="Only plot post/comment numbers up to this value.",
+        default=250,
+        help="Only plot post/comment numbers up to this value. Default: 250.",
     )
     parser.add_argument(
         "--username-column",
@@ -203,7 +204,30 @@ def average_scores_by_post_number(
     return per_post
 
 
-def plot_per_post_scores(per_post, score_columns, output_png, title, top_user_count):
+def add_regression_line(ax, x, y, color, label):
+    if len(x) < 2:
+        return
+
+    slope, intercept = np.polyfit(x, y, 1)
+    ax.plot(
+        x,
+        slope * x + intercept,
+        color=color,
+        linewidth=1.7,
+        linestyle="--",
+        alpha=0.85,
+        label=f"{label} regression",
+    )
+
+
+def plot_per_post_scores(
+    per_post,
+    score_columns,
+    output_png,
+    title,
+    top_user_count,
+    max_post_number,
+):
     os.environ.setdefault("MPLCONFIGDIR", ".matplotlib_cache")
     Path(os.environ["MPLCONFIGDIR"]).mkdir(parents=True, exist_ok=True)
 
@@ -223,22 +247,28 @@ def plot_per_post_scores(per_post, score_columns, output_png, title, top_user_co
     x = per_post["post_number"].to_numpy(dtype=int)
 
     for index, column in enumerate(score_columns):
+        y = per_post[column].to_numpy(dtype=float)
+        color = colors[index % len(colors)]
+        label = column.replace("_", " ")
         ax.plot(
             x,
-            per_post[column].to_numpy(dtype=float),
-            color=colors[index % len(colors)],
+            y,
+            color=color,
             linewidth=2,
             marker="o",
             markersize=3,
-            label=column.replace("_", " "),
+            label=label,
         )
+        add_regression_line(ax, x, y, color, label)
 
     ax.set_title(title, pad=12)
     ax.set_xlabel("Post/comment number for each top user")
     ax.set_ylabel("Average Detoxify score")
     ax.set_ylim(bottom=0)
+    if max_post_number is not None:
+        ax.set_xlim(1, max_post_number)
     ax.grid(True, color="#E2E2E2", linewidth=0.8)
-    ax.legend(frameon=True, ncol=2)
+    ax.legend(frameon=True, ncol=2, fontsize=8)
     ax.text(
         1,
         -0.13,
@@ -323,7 +353,14 @@ def main():
         per_post.to_csv(args.summary_output, index=False)
         print(f"Saved {args.summary_output}")
 
-    plot_per_post_scores(per_post, score_columns, output_png, title, len(ranking))
+    plot_per_post_scores(
+        per_post,
+        score_columns,
+        output_png,
+        title,
+        len(ranking),
+        args.max_post_number,
+    )
 
     print(f"Saved {output_png}")
     print(f"Users selected: {len(ranking)}")

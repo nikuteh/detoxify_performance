@@ -116,7 +116,8 @@ python -u scripts/community/visualization/plot_top_users_toxicity_by_post_number
   --summary-output "${DATA_DIR}/${COMMENTS_BASE}_top_100_users_toxicity_by_post_number.csv" \
   --title "${SUBREDDIT} Top 100 Users: Average Toxicity by Post Number" \
   --top-n 100 \
-  --min-users-per-post 1
+  --min-users-per-post 1 \
+  --max-post-number "${TOP_USERS_POST_NUMBER_MAX:-250}"
 
 python -u scripts/community/visualization/plot_all_users_toxicity_by_post_number.py \
   "$PREDICTIONS_CSV" \
