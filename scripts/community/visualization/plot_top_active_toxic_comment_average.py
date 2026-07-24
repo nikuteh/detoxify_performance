@@ -30,6 +30,14 @@ def parse_args():
         help="Optional output CSV with the two cohort averages.",
     )
     parser.add_argument(
+        "--percent-output",
+        type=Path,
+        help=(
+            "Optional output PNG comparing the percent of comments that are "
+            "toxic for top active users against all users."
+        ),
+    )
+    parser.add_argument(
         "--histogram-output",
         type=Path,
         help=(
@@ -94,6 +102,13 @@ def parse_args():
     parser.add_argument(
         "--title",
         help="Plot title. Default: inferred from the input CSV filename.",
+    )
+    parser.add_argument(
+        "--percent-title",
+        help=(
+            "Percent-toxic plot title. Default: inferred from the input CSV "
+            "filename."
+        ),
     )
     return parser.parse_args()
 
@@ -182,7 +197,15 @@ def summarize_cohorts(users, args):
             }
         )
 
-    return pd.DataFrame(rows)
+    summary = pd.DataFrame(rows)
+    summary["percent_toxic_comments"] = 0.0
+    has_comments = summary["total_comments"] > 0
+    summary.loc[has_comments, "percent_toxic_comments"] = (
+        summary.loc[has_comments, "total_toxic_comments"]
+        / summary.loc[has_comments, "total_comments"]
+        * 100
+    )
+    return summary
 
 
 def summarize_top_active_by_post_number(df, users, args):
@@ -280,6 +303,49 @@ def plot_average_toxic_comments(summary, output_png, title):
     plt.close(fig)
 
 
+def plot_percent_toxic_comments(summary, output_png, title):
+    plt = configure_matplotlib()
+    output_png.parent.mkdir(parents=True, exist_ok=True)
+
+    fig, ax = plt.subplots(figsize=(10, 6), dpi=160)
+    ax.set_facecolor("#FAFAFA")
+    fig.patch.set_facecolor("white")
+
+    bars = ax.bar(
+        summary["cohort"],
+        summary["percent_toxic_comments"],
+        color=["#4C78A8", "#E45756"][: len(summary)],
+        edgecolor="white",
+    )
+    for bar, percent, toxic_comments, total_comments in zip(
+        bars,
+        summary["percent_toxic_comments"],
+        summary["total_toxic_comments"],
+        summary["total_comments"],
+    ):
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            percent + 0.4,
+            f"{percent:.1f}%\n({int(toxic_comments):,}/{int(total_comments):,})",
+            ha="center",
+            va="bottom",
+            fontsize=9,
+        )
+
+    ax.set_title(title, pad=12)
+    ax.set_xlabel("User cohort")
+    ax.set_ylabel("Percent of comments above toxicity threshold")
+    ax.set_ylim(
+        0,
+        min(100, max(5, float(summary["percent_toxic_comments"].max()) * 1.25)),
+    )
+    ax.grid(True, axis="y", color="#E2E2E2", linewidth=0.8)
+
+    fig.tight_layout()
+    fig.savefig(output_png)
+    plt.close(fig)
+
+
 def plot_post_number_histogram(summary, output_png, title, normalized):
     plt = configure_matplotlib()
     output_png.parent.mkdir(parents=True, exist_ok=True)
@@ -352,6 +418,10 @@ def main():
         args.input_csv,
         f"{args.input_csv.stem}_top_active_toxic_comment_average.png",
     )
+    percent_output = args.percent_output or infer_visualization_output(
+        args.input_csv,
+        f"{args.input_csv.stem}_top_active_vs_all_percent_toxic_comments.png",
+    )
     histogram_output = args.histogram_output or infer_visualization_output(
         args.input_csv,
         f"{args.input_csv.stem}_top_active_toxic_comments_by_post_number.png",
@@ -369,6 +439,9 @@ def main():
     title = args.title or (
         f"{args.input_csv.stem}: Toxic Comments for Top Active Users vs All Users"
     )
+    percent_title = args.percent_title or (
+        f"{args.input_csv.stem}: Percent Toxic Comments for Top Active Users vs All Users"
+    )
 
     if args.summary_output:
         args.summary_output.parent.mkdir(parents=True, exist_ok=True)
@@ -381,6 +454,7 @@ def main():
         print(f"Saved {args.histogram_summary_output}")
 
     plot_average_toxic_comments(summary, output_png, title)
+    plot_percent_toxic_comments(summary, percent_output, percent_title)
     plot_post_number_histogram(
         post_number_summary,
         histogram_output,
@@ -400,6 +474,7 @@ def main():
         normalized=True,
     )
     print(f"Saved {output_png}")
+    print(f"Saved {percent_output}")
     print(f"Saved {histogram_output}")
     print(f"Saved {normalized_histogram_output}")
     print(f"Cohorts plotted: {len(summary):,}")

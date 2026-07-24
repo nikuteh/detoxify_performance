@@ -154,6 +154,7 @@ def summarize_concentration(args):
         "total_users": total_users,
         "total_comments": total_comments,
         "total_toxic_comments": total_toxic_comments,
+        "mean_toxicity": float(df[args.score_column].mean()),
     }
 
 
@@ -341,14 +342,30 @@ def plot_top_percent_users(users, counts, output_png, title, top_n, min_comments
             fontsize=9,
         )
 
+    mean_toxicity_percent = counts["mean_toxicity"] * 100
+    ax.axvline(
+        mean_toxicity_percent,
+        color="#4C78A8",
+        linestyle="--",
+        linewidth=1.8,
+        label=f"Subreddit mean toxicity score: {counts['mean_toxicity']:.3f}",
+    )
     ax.set_title(title, pad=12)
     ax.set_xlabel("Percent of user's comments above toxicity threshold")
     ax.set_ylabel("User ranked by toxic-comment count")
     ax.set_xlim(
         0,
-        min(100, max(1, float(plot_data["percent_toxic_comments"].max()) * 1.2)),
+        min(
+            100,
+            max(
+                1,
+                float(plot_data["percent_toxic_comments"].max()) * 1.2,
+                mean_toxicity_percent * 1.2,
+            ),
+        ),
     )
     ax.grid(True, axis="x", color="#E2E2E2", linewidth=0.8)
+    ax.legend(frameon=True, loc="lower right")
     fig.tight_layout()
     fig.savefig(output_png)
     plt.close(fig)

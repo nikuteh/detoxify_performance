@@ -48,7 +48,13 @@ if [ ! -f "$CLEANED_CSV" ]; then
 fi
 
 mkdir -p "$DATA_DIR" "$VIS_DIR" "$USERS_DIR"
-find "$VIS_DIR" -type f -name '*.png' -delete
+
+THRESHOLD="${TOXICITY_THRESHOLD:-0.5}"
+
+echo "Running community processing analyses for ${SUBREDDIT}"
+echo "Input: ${PREDICTIONS_CSV}"
+echo "Outputs: ${DATA_DIR} and ${VIS_DIR}"
+echo "Toxicity threshold: ${THRESHOLD}"
 
 # compute toxicity percentages for all comments in a csv
 python -u scripts/community/processing/compute_toxicity_percentages.py \
@@ -86,11 +92,6 @@ python -u scripts/community/processing/rank_users_by_average_toxicity.py \
 
 python -u scripts/community/visualization/plot_toxicity_over_time.py \
   "$PREDICTIONS_CSV" \
-  --output "${VIS_DIR}/${COMMENTS_BASE}_toxicity_over_time.png" \
-  --title "${SUBREDDIT} Toxicity Over Time"
-
-python -u scripts/community/visualization/plot_toxicity_over_time.py \
-  "$PREDICTIONS_CSV" \
   --output "${VIS_DIR}/${COMMENTS_BASE}_toxicity_scatter_over_time.png" \
   --title "${SUBREDDIT} Toxicity Scatter Over Time" \
   --scatter-only \
@@ -119,18 +120,6 @@ python -u scripts/community/visualization/plot_top_users_toxicity_by_post_number
   --min-users-per-post 1 \
   --max-post-number "${TOP_USERS_POST_NUMBER_MAX:-250}"
 
-python -u scripts/community/visualization/plot_all_users_toxicity_by_post_number.py \
-  "$PREDICTIONS_CSV" \
-  --average-output "${VIS_DIR}/${COMMENTS_BASE}_all_users_average_toxicity_by_post_number.png" \
-  --percent-output "${VIS_DIR}/${COMMENTS_BASE}_all_users_percent_toxic_by_post_number.png" \
-  --summary-output "${DATA_DIR}/${COMMENTS_BASE}_all_users_toxicity_by_post_number.csv"
-
-python -u scripts/community/visualization/plot_all_users_toxicity_over_user_time.py \
-  "$PREDICTIONS_CSV" \
-  --average-output "${VIS_DIR}/${COMMENTS_BASE}_all_users_average_toxicity_over_user_time.png" \
-  --percent-output "${VIS_DIR}/${COMMENTS_BASE}_all_users_percent_toxic_over_user_time.png" \
-  --summary-output "${DATA_DIR}/${COMMENTS_BASE}_all_users_toxicity_over_user_time.csv"
-
 python -u scripts/community/visualization/cultural_violence_test_2.py \
   "$TOXIC_CSV" \
   "$CLEANED_CSV" \
@@ -145,12 +134,6 @@ python -u scripts/community/visualization/cultural_violence_test_3.py \
   --summary-output "${DATA_DIR}/${COMMENTS_BASE}_average_response_toxicity_by_parent_post_number.csv" \
   --title "${SUBREDDIT} Average Response Toxicity by Parent Post Number"
 
-python -u scripts/community/visualization/cultural_violence_test_4.py \
-  "$PREDICTIONS_CSV" \
-  --output "${VIS_DIR}/${COMMENTS_BASE}_comment_vs_response_toxicity_by_parent_post_number.png" \
-  --summary-output "${DATA_DIR}/${COMMENTS_BASE}_comment_vs_response_toxicity_by_parent_post_number.csv" \
-  --title "${SUBREDDIT} Comment vs Response Toxicity by Parent Post Number"
-
 python -u scripts/community/visualization/plot_response_toxicity_by_user_post_number.py \
   "$PREDICTIONS_CSV" \
   --output "${VIS_DIR}/${COMMENTS_BASE}_response_toxicity_by_post_number.png" \
@@ -158,3 +141,76 @@ python -u scripts/community/visualization/plot_response_toxicity_by_user_post_nu
   --users "${RESPONSE_USERS:-100}" \
   --min-comments "${RESPONSE_MIN_COMMENTS:-200}" \
   --comments-per-user "${RESPONSE_COMMENTS_PER_USER:-500}"
+
+# Toxic comment volume by month.
+python -u scripts/community/visualization/plot_toxic_comment_volume_over_time.py \
+  "$PREDICTIONS_CSV" \
+  --bar-output "${VIS_DIR}/${COMMENTS_BASE}_toxic_comment_volume_by_month_bar.png" \
+  --line-output "${VIS_DIR}/${COMMENTS_BASE}_toxic_comment_volume_by_month_line.png" \
+  --percent-line-output "${VIS_DIR}/${COMMENTS_BASE}_toxic_comment_percent_by_month_line.png" \
+  --summary-output "${DATA_DIR}/${COMMENTS_BASE}_toxic_comment_volume_by_month.csv" \
+  --bar-title "${SUBREDDIT} Toxic Comment Volume by Month" \
+  --line-title "${SUBREDDIT} Toxic Comment Volume by Month" \
+  --percent-line-title "${SUBREDDIT} Percent Toxic Comments by Month" \
+  --threshold "$THRESHOLD" \
+  --time-bin "${TOXIC_VOLUME_TIME_BIN:-MS}"
+
+# Ideas 4 and 5: toxic reply contagion and parent-child toxicity deltas.
+python -u scripts/community/visualization/plot_parent_child_toxicity.py \
+  "$PREDICTIONS_CSV" \
+  --contagion-output "${VIS_DIR}/${COMMENTS_BASE}_idea_4_toxic_reply_contagion.png" \
+  --delta-output "${VIS_DIR}/${COMMENTS_BASE}_idea_5_parent_child_toxicity_delta.png" \
+  --summary-output "${DATA_DIR}/${COMMENTS_BASE}_idea_4_5_parent_child_toxicity.csv" \
+  --title-prefix "${SUBREDDIT}" \
+  --threshold "$THRESHOLD"
+
+# Idea 7: whether toxic comments attract more direct replies.
+python -u scripts/community/visualization/plot_toxicity_engagement.py \
+  "$PREDICTIONS_CSV" \
+  --output "${VIS_DIR}/${COMMENTS_BASE}_idea_7_toxicity_engagement.png" \
+  --summary-output "${DATA_DIR}/${COMMENTS_BASE}_idea_7_toxicity_engagement.csv" \
+  --title "${SUBREDDIT} Toxicity and Direct Reply Engagement" \
+  --threshold "$THRESHOLD"
+
+# Idea 11: user lifecycle toxicity over elapsed user time.
+python -u scripts/community/visualization/plot_all_users_toxicity_over_user_time.py \
+  "$PREDICTIONS_CSV" \
+  --average-output "${VIS_DIR}/${COMMENTS_BASE}_idea_11_all_users_average_toxicity_over_user_time.png" \
+  --percent-output "${VIS_DIR}/${COMMENTS_BASE}_idea_11_all_users_percent_toxic_over_user_time.png" \
+  --summary-output "${DATA_DIR}/${COMMENTS_BASE}_idea_11_all_users_toxicity_over_user_time.csv" \
+  --top-active-average-output "${VIS_DIR}/${COMMENTS_BASE}_idea_11_top_100_active_users_average_toxicity_by_week.png" \
+  --top-active-summary-output "${DATA_DIR}/${COMMENTS_BASE}_idea_11_top_100_active_users_average_toxicity_by_week.csv" \
+  --top-active-average-title "${SUBREDDIT} Top 100 Active Users: Average Toxicity by Week" \
+  --top-active-users "${USER_LIFECYCLE_TOP_ACTIVE_USERS:-100}" \
+  --threshold "$THRESHOLD" \
+  --time-unit "${USER_LIFECYCLE_TIME_UNIT:-week}" \
+  --max-time-number "${USER_LIFECYCLE_MAX_TIME:-100}"
+
+# Idea 15: toxicity concentration among users.
+python -u scripts/community/visualization/plot_toxicity_concentration.py \
+  "$PREDICTIONS_CSV" \
+  --curve-output "${VIS_DIR}/${COMMENTS_BASE}_idea_15_toxicity_concentration_curve.png" \
+  --top-users-output "${VIS_DIR}/${COMMENTS_BASE}_idea_15_top_toxicity_contributors.png" \
+  --top-percent-users-output "${VIS_DIR}/${COMMENTS_BASE}_idea_15_top_toxicity_contributors_by_percent.png" \
+  --summary-output "${DATA_DIR}/${COMMENTS_BASE}_idea_15_toxicity_concentration.csv" \
+  --title-prefix "${SUBREDDIT}" \
+  --threshold "$THRESHOLD" \
+  --top-n "${CONCENTRATION_TOP_N:-20}" \
+  --min-comments-for-percent "${CONCENTRATION_MIN_COMMENTS_FOR_PERCENT:-1}"
+
+# Idea 16: toxic-comment counts and percentages for top active users vs all users.
+python -u scripts/community/visualization/plot_top_active_toxic_comment_average.py \
+  "$PREDICTIONS_CSV" \
+  --output "${VIS_DIR}/${COMMENTS_BASE}_idea_16_top_active_vs_all_toxic_comment_average.png" \
+  --percent-output "${VIS_DIR}/${COMMENTS_BASE}_idea_16_top_active_vs_all_percent_toxic_comments.png" \
+  --summary-output "${DATA_DIR}/${COMMENTS_BASE}_idea_16_top_active_vs_all_toxic_comment_average.csv" \
+  --histogram-output "${VIS_DIR}/${COMMENTS_BASE}_idea_16_top_active_toxic_comments_by_post_number.png" \
+  --normalized-histogram-output "${VIS_DIR}/${COMMENTS_BASE}_idea_16_top_active_toxic_comments_by_post_number_normalized.png" \
+  --histogram-summary-output "${DATA_DIR}/${COMMENTS_BASE}_idea_16_top_active_toxic_comments_by_post_number.csv" \
+  --title "${SUBREDDIT} Top Active Users vs All Users: Average Toxic Comment Count" \
+  --percent-title "${SUBREDDIT} Top Active Users vs All Users: Percent Toxic Comments" \
+  --threshold "$THRESHOLD" \
+  --top-active-users "${TOP_ACTIVE_TOXIC_AVERAGE_USERS:-100}" \
+  --max-post-number "${TOP_ACTIVE_TOXIC_POST_NUMBER_MAX:-100}"
+
+echo "Community processing analyses complete for ${SUBREDDIT}"
