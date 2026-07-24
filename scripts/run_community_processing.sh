@@ -139,7 +139,7 @@ python -u scripts/community/visualization/plot_response_toxicity_by_user_post_nu
   --output "${VIS_DIR}/${COMMENTS_BASE}_response_toxicity_by_post_number.png" \
   --summary-output "${DATA_DIR}/${COMMENTS_BASE}_response_toxicity_by_post_number.csv" \
   --users "${RESPONSE_USERS:-100}" \
-  --min-comments "${RESPONSE_MIN_COMMENTS:-200}" \
+  --min-comments "${RESPONSE_MIN_COMMENTS:-100}" \
   --comments-per-user "${RESPONSE_COMMENTS_PER_USER:-500}"
 
 # Toxic comment volume by month.
