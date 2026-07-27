@@ -580,7 +580,15 @@ def plot_horizontal_bars(summary, metric, output_png, title, xlabel, color="#4C7
     return True
 
 
-def plot_grouped_bars(summary, metrics, output_png, title, xlabel, ylabel="Subreddit"):
+def plot_grouped_bars(
+    summary,
+    metrics,
+    output_png,
+    title,
+    xlabel,
+    ylabel="Subreddit",
+    legend_labels=None,
+):
     plot_metrics = [metric for metric in metrics if metric in summary.columns]
     plot_data = summary.dropna(subset=plot_metrics, how="all").copy()
     if plot_data.empty or not plot_metrics:
@@ -592,7 +600,7 @@ def plot_grouped_bars(summary, metrics, output_png, title, xlabel, ylabel="Subre
     plt = configure_matplotlib()
     output_png.parent.mkdir(parents=True, exist_ok=True)
 
-    labels = plot_data["subreddit"].astype(str).tolist()
+    subreddit_labels = plot_data["subreddit"].astype(str).tolist()
     y = np.arange(len(plot_data))
     height = min(0.22, 0.8 / max(1, len(plot_metrics)))
     offsets = (np.arange(len(plot_metrics)) - (len(plot_metrics) - 1) / 2) * height
@@ -611,14 +619,18 @@ def plot_grouped_bars(summary, metrics, output_png, title, xlabel, ylabel="Subre
             height=height,
             color=colors[index % len(colors)],
             edgecolor="white",
-            label=metric.replace("percent_", "").replace("_", " "),
+            label=(
+                legend_labels.get(metric)
+                if legend_labels and metric in legend_labels
+                else metric.replace("percent_", "").replace("_", " ")
+            ),
         )
 
     ax.set_title(title, pad=12)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     ax.set_yticks(y)
-    ax.set_yticklabels(labels)
+    ax.set_yticklabels(subreddit_labels)
     ax.grid(True, axis="x", color="#E2E2E2", linewidth=0.8)
     ax.legend(frameon=True, loc="lower right")
     fig.tight_layout()
@@ -753,6 +765,29 @@ def make_plots(summary, plot_dir):
         output,
         "Toxicity Concentration by Community",
         "Share of toxic comments produced by top-ranked toxic users",
+        legend_labels={
+            "top_1_percent_users_share_of_toxic_comments": "Top 1% users",
+            "top_5_percent_users_share_of_toxic_comments": "Top 5% users",
+            "top_10_percent_users_share_of_toxic_comments": "Top 10% users",
+        },
+    ):
+        outputs.append(output)
+
+    contagion_metrics = [
+        "percent_replies_toxic_to_nontoxic_parent",
+        "percent_replies_toxic_to_toxic_parent",
+    ]
+    output = plot_dir / "all_communities_toxic_reply_contagion_by_parent_type.png"
+    if plot_grouped_bars(
+        summary,
+        contagion_metrics,
+        output,
+        "Toxic Reply Contagion by Parent Comment Type",
+        "Percent of direct replies above toxicity threshold",
+        legend_labels={
+            "percent_replies_toxic_to_nontoxic_parent": "Negative/non-toxic parent",
+            "percent_replies_toxic_to_toxic_parent": "Positive/toxic parent",
+        },
     ):
         outputs.append(output)
 
@@ -781,6 +816,10 @@ def make_plots(summary, plot_dir):
         output,
         "Top Active Users vs All Comments",
         "Percent toxic comments",
+        legend_labels={
+            "percent_toxic_comments": "All comments",
+            "percent_toxic_comments_top_active_users": "Top active users",
+        },
     ):
         outputs.append(output)
 
