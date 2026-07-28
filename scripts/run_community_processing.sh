@@ -194,9 +194,11 @@ python -u scripts/community/visualization/plot_all_users_toxicity_over_user_time
 python -u scripts/community/visualization/plot_toxicity_concentration.py \
   "$PREDICTIONS_CSV" \
   --curve-output "${VIS_DIR}/${COMMENTS_BASE}_idea_15_toxicity_concentration_curve.png" \
+  --active-curve-output "${VIS_DIR}/${COMMENTS_BASE}_idea_15_top_active_users_toxicity_concentration_curve.png" \
   --top-users-output "${VIS_DIR}/${COMMENTS_BASE}_idea_15_top_toxicity_contributors.png" \
   --top-percent-users-output "${VIS_DIR}/${COMMENTS_BASE}_idea_15_top_toxicity_contributors_by_percent.png" \
   --summary-output "${DATA_DIR}/${COMMENTS_BASE}_idea_15_toxicity_concentration.csv" \
+  --active-summary-output "${DATA_DIR}/${COMMENTS_BASE}_idea_15_top_active_users_toxicity_concentration.csv" \
   --title-prefix "${SUBREDDIT}" \
   --threshold "$THRESHOLD" \
   --top-n "${CONCENTRATION_TOP_N:-20}" \

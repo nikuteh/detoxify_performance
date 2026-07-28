@@ -25,6 +25,14 @@ def parse_args():
         help="Output PNG for cumulative concentration curve.",
     )
     parser.add_argument(
+        "--active-curve-output",
+        type=Path,
+        help=(
+            "Output PNG for cumulative toxic-comment share after ranking "
+            "users by total comment activity."
+        ),
+    )
+    parser.add_argument(
         "--top-users-output",
         type=Path,
         help="Output PNG for top toxic-comment contributors.",
@@ -38,6 +46,11 @@ def parse_args():
         "--summary-output",
         type=Path,
         help="Optional output CSV with ranked users and cumulative shares.",
+    )
+    parser.add_argument(
+        "--active-summary-output",
+        type=Path,
+        help="Optional output CSV with users ranked by total comment activity.",
     )
     parser.add_argument(
         "--username-column",
@@ -158,6 +171,33 @@ def summarize_concentration(args):
     }
 
 
+def rank_users_by_activity(users, total_comments, total_toxic_comments):
+    active_users = users.rename(columns={"rank": "toxic_contributor_rank"}).sort_values(
+        ["comment_count", "toxic_comment_count", "average_toxicity"],
+        ascending=[False, False, False],
+    ).reset_index(drop=True)
+    active_users.insert(0, "active_rank", active_users.index + 1)
+    active_users["cumulative_users"] = active_users["active_rank"]
+    active_users["cumulative_percent_users"] = (
+        active_users["cumulative_users"] / len(active_users) * 100
+    )
+    active_users["cumulative_comments"] = active_users["comment_count"].cumsum()
+    active_users["cumulative_percent_comments"] = (
+        active_users["cumulative_comments"] / total_comments * 100
+        if total_comments
+        else 0.0
+    )
+    active_users["cumulative_toxic_comments"] = (
+        active_users["toxic_comment_count"].cumsum()
+    )
+    active_users["cumulative_percent_toxic_comments"] = (
+        active_users["cumulative_toxic_comments"] / total_toxic_comments * 100
+        if total_toxic_comments
+        else 0.0
+    )
+    return active_users
+
+
 def configure_matplotlib():
     os.environ.setdefault("MPLCONFIGDIR", ".matplotlib_cache")
     Path(os.environ["MPLCONFIGDIR"]).mkdir(parents=True, exist_ok=True)
@@ -190,7 +230,7 @@ def plot_empty(output_png, title):
     plt.close(fig)
 
 
-def plot_curve(users, counts, output_png, title):
+def plot_curve(users, counts, output_png, title, ranking_label):
     if counts["total_toxic_comments"] == 0:
         plot_empty(output_png, title)
         return
@@ -207,7 +247,7 @@ def plot_curve(users, counts, output_png, title):
         users["cumulative_percent_toxic_comments"],
         color="#4C78A8",
         linewidth=2.6,
-        label="Observed concentration",
+        label=ranking_label,
     )
     ax.plot([0, 100], [0, 100], color="#999999", linestyle="--", linewidth=1.4, label="Even distribution")
 
@@ -221,7 +261,7 @@ def plot_curve(users, counts, output_png, title):
         ax.text(x + 1, y, f"top {percent}%: {y:.1f}%", va="center", fontsize=9)
 
     ax.set_title(title, pad=12)
-    ax.set_xlabel("Cumulative percent of users")
+    ax.set_xlabel(f"Cumulative percent of users, ranked by {ranking_label.lower()}")
     ax.set_ylabel("Cumulative percent of toxic comments")
     ax.set_xlim(0, 100)
     ax.set_ylim(0, 100)
@@ -393,6 +433,10 @@ def main():
         args.input_csv,
         f"{args.input_csv.stem}_toxicity_concentration_curve.png",
     )
+    active_curve_output = args.active_curve_output or infer_visualization_output(
+        args.input_csv,
+        f"{args.input_csv.stem}_top_active_users_toxicity_concentration_curve.png",
+    )
     top_users_output = args.top_users_output or infer_visualization_output(
         args.input_csv,
         f"{args.input_csv.stem}_top_toxicity_contributors.png",
@@ -402,13 +446,36 @@ def main():
         f"{args.input_csv.stem}_top_toxicity_contributors_by_percent.png",
     )
     title_prefix = args.title_prefix or args.input_csv.stem
+    active_users = rank_users_by_activity(
+        users,
+        counts["total_comments"],
+        counts["total_toxic_comments"],
+    )
 
     if args.summary_output:
         args.summary_output.parent.mkdir(parents=True, exist_ok=True)
         users.to_csv(args.summary_output, index=False)
         print(f"Saved {args.summary_output}")
 
-    plot_curve(users, counts, curve_output, f"{title_prefix}: Toxicity Concentration")
+    if args.active_summary_output:
+        args.active_summary_output.parent.mkdir(parents=True, exist_ok=True)
+        active_users.to_csv(args.active_summary_output, index=False)
+        print(f"Saved {args.active_summary_output}")
+
+    plot_curve(
+        users,
+        counts,
+        curve_output,
+        f"{title_prefix}: Toxicity Concentration",
+        "toxic-comment contribution",
+    )
+    plot_curve(
+        active_users,
+        counts,
+        active_curve_output,
+        f"{title_prefix}: Toxic Comments From Top Active Users",
+        "total comment activity",
+    )
     plot_top_users(
         users,
         counts,
@@ -426,6 +493,7 @@ def main():
     )
 
     print(f"Saved {curve_output}")
+    print(f"Saved {active_curve_output}")
     print(f"Saved {top_users_output}")
     print(f"Saved {top_percent_users_output}")
     print(f"Users ranked: {counts['total_users']:,}")
