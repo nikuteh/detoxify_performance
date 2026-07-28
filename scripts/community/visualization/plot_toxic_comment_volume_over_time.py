@@ -35,6 +35,14 @@ def parse_args():
         help="Output PNG path for the percent-toxic line chart.",
     )
     parser.add_argument(
+        "--combined-line-output",
+        type=Path,
+        help=(
+            "Output PNG path for a dual-line chart comparing total comment "
+            "volume and toxic-comment volume."
+        ),
+    )
+    parser.add_argument(
         "--summary-output",
         type=Path,
         help="Optional output CSV with toxic-comment counts by time bin.",
@@ -71,6 +79,13 @@ def parse_args():
     parser.add_argument(
         "--percent-line-title",
         help="Percent-toxic line chart title. Default: inferred from input CSV.",
+    )
+    parser.add_argument(
+        "--combined-line-title",
+        help=(
+            "Combined total-vs-toxic line chart title. Default: inferred from "
+            "input CSV."
+        ),
     )
     parser.add_argument(
         "--chunk-size",
@@ -273,6 +288,77 @@ def plot_percent_toxic(summary, output_png, title, threshold):
     plt.close(fig)
 
 
+def plot_total_and_toxic_volume(summary, output_png, title, threshold):
+    mdates, plt = configure_matplotlib()
+    output_png.parent.mkdir(parents=True, exist_ok=True)
+
+    fig, ax_total = plt.subplots(figsize=(12, 6), dpi=160)
+    ax_total.set_facecolor("#FAFAFA")
+    fig.patch.set_facecolor("white")
+
+    total_line = ax_total.plot(
+        summary["date"],
+        summary["total_comments"],
+        color="#4C78A8",
+        linewidth=2.6,
+        marker="o",
+        markersize=4,
+        markerfacecolor="#4C78A8",
+        markeredgecolor="white",
+        markeredgewidth=0.7,
+        label="Total comments",
+    )
+    ax_total.set_ylabel("Total comments", color="#4C78A8")
+    ax_total.tick_params(axis="y", labelcolor="#4C78A8")
+    ax_total.set_ylim(bottom=0)
+
+    ax_toxic = ax_total.twinx()
+    toxic_line = ax_toxic.plot(
+        summary["date"],
+        summary["toxic_comment_count"],
+        color="#E45756",
+        linewidth=2.6,
+        marker="o",
+        markersize=4,
+        markerfacecolor="#F58518",
+        markeredgecolor="white",
+        markeredgewidth=0.7,
+        label=f"Comments above {threshold:g} toxicity",
+    )
+    ax_toxic.set_ylabel(f"Comments above {threshold:g} toxicity", color="#E45756")
+    ax_toxic.tick_params(axis="y", labelcolor="#E45756")
+    ax_toxic.set_ylim(bottom=0)
+
+    lines = total_line + toxic_line
+    labels = [line.get_label() for line in lines]
+    ax_total.legend(lines, labels, frameon=True, loc="upper left")
+
+    ax_total.set_title(title, pad=12)
+    ax_total.set_xlabel("Month")
+    ax_total.xaxis.set_major_locator(mdates.YearLocator())
+    ax_total.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
+    ax_total.grid(True, axis="y", color="#E2E2E2", linewidth=0.8)
+    ax_total.text(
+        1,
+        -0.14,
+        (
+            f"Months plotted: {len(summary):,}; "
+            f"comments: {int(summary['total_comments'].sum()):,}; "
+            f"toxic comments: {int(summary['toxic_comment_count'].sum()):,}"
+        ),
+        transform=ax_total.transAxes,
+        ha="right",
+        va="top",
+        fontsize=9,
+        color="#555555",
+    )
+
+    fig.autofmt_xdate()
+    fig.tight_layout()
+    fig.savefig(output_png)
+    plt.close(fig)
+
+
 def main():
     args = parse_args()
     if not args.input_csv.is_file():
@@ -301,6 +387,10 @@ def main():
         args.input_csv,
         f"{args.input_csv.stem}_toxic_comment_percent_by_month_line.png",
     )
+    combined_line_output = args.combined_line_output or infer_visualization_output(
+        args.input_csv,
+        f"{args.input_csv.stem}_comment_and_toxic_comment_volume_by_month_line.png",
+    )
     bar_title = args.bar_title or (
         f"{args.input_csv.stem}: Toxic Comment Volume by Month"
     )
@@ -309,6 +399,9 @@ def main():
     )
     percent_line_title = args.percent_line_title or (
         f"{args.input_csv.stem}: Percent Toxic Comments by Month"
+    )
+    combined_line_title = args.combined_line_title or (
+        f"{args.input_csv.stem}: Comment and Toxic Comment Volume by Month"
     )
 
     if args.summary_output:
@@ -324,10 +417,17 @@ def main():
         percent_line_title,
         args.threshold,
     )
+    plot_total_and_toxic_volume(
+        summary,
+        combined_line_output,
+        combined_line_title,
+        args.threshold,
+    )
 
     print(f"Saved {bar_output}")
     print(f"Saved {line_output}")
     print(f"Saved {percent_line_output}")
+    print(f"Saved {combined_line_output}")
     print(f"Rows read: {total_rows:,}")
     print(f"Months plotted: {len(summary):,}")
     print(f"Toxic comments counted: {int(summary['toxic_comment_count'].sum()):,}")
