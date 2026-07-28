@@ -235,8 +235,8 @@ Rank users by average toxicity:
 ```bash
 python scripts/community/processing/rank_users_by_average_toxicity.py \
   data/subreddits/<Subreddit>/users \
-  --output data/subreddits/<Subreddit>/users/top_10_average_toxicity.csv \
-  --top-n 10
+  --output data/subreddits/<Subreddit>/users/top_30_average_toxicity.csv \
+  --top-n 30
 ```
 
 Rank more users:
@@ -289,21 +289,23 @@ python scripts/community/visualization/plot_posts_over_time.py \
   --time-bin MS
 ```
 
-Plot average toxicity by post/comment number for the top toxic users:
+Plot toxic-comment volume over time for the top toxic users:
 
 ```bash
 python scripts/community/visualization/plot_top_toxic_users_average_toxicity.py \
   data/subreddits/<Subreddit>/users \
-  --output visualizations/subreddits/<Subreddit>/top_10_average_toxicity_per_post_scatter.png \
-  --top-n 10
+  --output visualizations/subreddits/<Subreddit>/top_30_toxic_comment_volume_over_time.png \
+  --summary-output data/subreddits/<Subreddit>/<comments_base>_top_30_toxic_comment_volume_over_time.csv \
+  --top-n 30 \
+  --threshold 0.5
 ```
 
-Plot only post/comment numbers where at least 5 of the top users contributed:
+Change the toxic-comment volume time interval:
 
 ```bash
 python scripts/community/visualization/plot_top_toxic_users_average_toxicity.py \
   data/subreddits/<Subreddit>/users \
-  --min-users-per-post 5
+  --time-bin QS
 ```
 
 Plot average Detoxify scores by post/comment number for the top users in the

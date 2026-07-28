@@ -2,7 +2,6 @@ import argparse
 import os
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 
@@ -14,8 +13,8 @@ VISUALIZATION_SUBREDDITS_DIR = PROJECT_ROOT / "visualizations" / "subreddits"
 def parse_args():
     parser = argparse.ArgumentParser(
         description=(
-            "Plot the top users in a subreddit folder by average toxicity per "
-            "post/comment number, with a scatter plot and linear regression line."
+            "Rank top users in a subreddit folder by average toxicity, then "
+            "plot the volume of toxic comments from those users over time."
         )
     )
     parser.add_argument(
@@ -33,8 +32,8 @@ def parse_args():
     parser.add_argument(
         "--top-n",
         type=int,
-        default=10,
-        help="Number of most toxic users to plot. Default: 10.",
+        default=30,
+        help="Number of most toxic users to analyze. Default: 30.",
     )
     parser.add_argument(
         "--score-column",
@@ -46,15 +45,29 @@ def parse_args():
         type=int,
         default=None,
         help=(
-            "Minimum number of top users that must have a post/comment at a "
-            "given post number for that point to be plotted. Default: all "
-            "plotted top users."
+            "Deprecated; retained for compatibility with older runner calls."
         ),
     )
     parser.add_argument(
         "--max-post-number",
         type=int,
-        help="Only plot post/comment numbers up to this value.",
+        help="Deprecated; retained for compatibility with older runner calls.",
+    )
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.5,
+        help="Only count comments above this toxicity threshold. Default: 0.5.",
+    )
+    parser.add_argument(
+        "--time-bin",
+        default="MS",
+        help="Pandas resample interval for toxic-comment counts. Default: MS.",
+    )
+    parser.add_argument(
+        "--summary-output",
+        type=Path,
+        help="Optional output CSV with toxic-comment counts by time bin.",
     )
     return parser.parse_args()
 
@@ -145,29 +158,70 @@ def load_top_user_posts(ranking, score_column):
         csv_path = Path(user["source_file"])
 
         columns = set(pd.read_csv(csv_path, nrows=0).columns)
-        usecols = [score_column]
-        if "timestamp" in columns:
-            usecols.append("timestamp")
+        if "timestamp" not in columns:
+            continue
+
+        usecols = [score_column, "timestamp"]
 
         df = pd.read_csv(csv_path, usecols=usecols)
         df[score_column] = pd.to_numeric(df[score_column], errors="coerce")
-        df = df.dropna(subset=[score_column]).copy()
+        df["timestamp"] = pd.to_numeric(df["timestamp"], errors="coerce")
+        df = df.dropna(subset=[score_column, "timestamp"]).copy()
         if df.empty:
             continue
 
-        if "timestamp" in df.columns:
-            df["timestamp"] = pd.to_numeric(df["timestamp"], errors="coerce")
-            df = df.sort_values("timestamp", na_position="last")
-
         df["username"] = user["username"]
         df["rank"] = user["rank"]
-        df["post_number"] = np.arange(1, len(df) + 1)
-        frames.append(df[["username", "rank", "post_number", score_column]])
+        frames.append(df[["username", "rank", "timestamp", score_column]])
 
     if not frames:
-        raise SystemExit("No usable top-user rows found to plot")
+        raise SystemExit("No usable timestamped top-user rows found to plot")
 
     return pd.concat(frames, ignore_index=True)
+
+
+def summarize_toxic_volume_over_time(top_posts, score_column, threshold, time_bin):
+    toxic_posts = top_posts[top_posts[score_column] > threshold].copy()
+    if toxic_posts.empty:
+        raise SystemExit(
+            f"No comments from the selected top users were above {threshold:g}"
+        )
+
+    toxic_posts["date"] = pd.to_datetime(
+        toxic_posts["timestamp"],
+        unit="s",
+        utc=True,
+        errors="coerce",
+    )
+    toxic_posts = toxic_posts.dropna(subset=["date"]).copy()
+    if toxic_posts.empty:
+        raise SystemExit("No toxic comments had usable timestamps")
+
+    indexed = toxic_posts.set_index("date").sort_index()
+    counts = indexed[score_column].resample(time_bin).size()
+    contributing_users = indexed["username"].resample(time_bin).nunique()
+    average_toxicity = indexed[score_column].resample(time_bin).mean()
+
+    full_index = pd.date_range(
+        counts.index.min(),
+        counts.index.max(),
+        freq=time_bin,
+        tz="UTC",
+    )
+    summary = pd.DataFrame(
+        {
+            "date": full_index,
+            "toxic_comment_count": counts.reindex(full_index, fill_value=0).astype(int),
+            "contributing_users": contributing_users.reindex(
+                full_index,
+                fill_value=0,
+            ).astype(int),
+            "average_toxicity": average_toxicity.reindex(full_index),
+        }
+    )
+    summary["threshold"] = threshold
+    summary["time_bin"] = time_bin
+    return summary
 
 
 def main():
@@ -175,14 +229,14 @@ def main():
 
     if not args.user_csv_folder.is_dir():
         raise SystemExit(f"Folder does not exist: {args.user_csv_folder}")
-    if args.top_n < 2:
-        raise SystemExit("--top-n must be at least 2 to draw a regression line")
-    if args.max_post_number is not None and args.max_post_number < 1:
-        raise SystemExit("--max-post-number must be at least 1")
+    if args.top_n < 1:
+        raise SystemExit("--top-n must be at least 1")
+    if args.threshold < 0 or args.threshold > 1:
+        raise SystemExit("--threshold must be between 0 and 1")
 
     output_png = args.output or infer_visualization_output(
         args.user_csv_folder,
-        f"top_{args.top_n}_average_toxicity_per_post_scatter.png",
+        f"top_{args.top_n}_toxic_comment_volume_over_time.png",
     )
 
     os.environ.setdefault("MPLCONFIGDIR", ".matplotlib_cache")
@@ -199,95 +253,72 @@ def main():
         args.top_n,
         args.score_column,
     )
-    min_users_per_post = args.min_users_per_post or len(ranking)
-    if min_users_per_post < 1:
-        raise SystemExit("--min-users-per-post must be at least 1")
-    if min_users_per_post > len(ranking):
-        raise SystemExit(
-            "--min-users-per-post cannot be greater than the number of "
-            "ranked users"
-        )
-
     top_posts = load_top_user_posts(ranking, args.score_column)
-
-    if args.max_post_number is not None:
-        top_posts = top_posts[top_posts["post_number"] <= args.max_post_number]
-
-    per_post = (
-        top_posts.groupby("post_number")
-        .agg(
-            average_toxicity=(args.score_column, "mean"),
-            contributing_posts=(args.score_column, "size"),
-            contributing_users=("username", "nunique"),
-        )
-        .reset_index()
+    summary = summarize_toxic_volume_over_time(
+        top_posts,
+        args.score_column,
+        args.threshold,
+        args.time_bin,
     )
-    per_post = per_post[per_post["contributing_users"] >= min_users_per_post]
-
-    if per_post.empty:
-        raise SystemExit(
-            "No post/comment numbers met the --min-users-per-post filter"
-        )
-
-    x = per_post["post_number"].to_numpy(dtype=float)
-    y = per_post["average_toxicity"].to_numpy(dtype=float)
-    if len(per_post) < 2 or np.unique(x).size < 2:
-        raise SystemExit("At least two unique post/comment numbers are needed")
-
-    slope, intercept = np.polyfit(x, y, 1)
-    x_line = np.linspace(x.min(), x.max(), 200)
-    y_line = slope * x_line + intercept
 
     output_png.parent.mkdir(parents=True, exist_ok=True)
+    if args.summary_output:
+        args.summary_output.parent.mkdir(parents=True, exist_ok=True)
+        summary.to_csv(args.summary_output, index=False)
+        print(f"Saved {args.summary_output}")
 
     fig, ax = plt.subplots(figsize=(11, 6.5), dpi=160)
     ax.set_facecolor("#FAFAFA")
     fig.patch.set_facecolor("white")
 
-    user_counts = per_post["contributing_users"].to_numpy(dtype=float)
-    if user_counts.min() == user_counts.max():
-        sizes = np.full_like(user_counts, 90.0)
-    else:
-        sizes = np.interp(user_counts, (user_counts.min(), user_counts.max()), (45, 180))
-
-    ax.scatter(
-        x,
-        y,
-        s=sizes,
-        alpha=0.82,
-        color="#4C78A8",
-        edgecolors="white",
-        linewidths=1.2,
-        label="Average per post/comment number",
-    )
     ax.plot(
-        x_line,
-        y_line,
-        color="#D95F02",
-        linewidth=2.4,
-        label=f"Regression ({slope:+.5f} toxicity per post/comment)",
+        summary["date"],
+        summary["toxic_comment_count"],
+        color="#E45756",
+        linewidth=2.6,
+        marker="o",
+        markersize=4,
+        markerfacecolor="#F58518",
+        markeredgecolor="white",
+        markeredgewidth=0.7,
+        label=f"Comments above {args.threshold:g} toxicity",
     )
 
     subreddit_name = infer_subreddit_name(args.user_csv_folder)
     ax.set_title(
         (
-            f"{subreddit_name}: Average Toxicity Per Post Number "
+            f"{subreddit_name}: Toxic Comment Volume Over Time "
             f"for Top {len(ranking)} Users"
         ),
         pad=12,
     )
-    ax.set_xlabel("Post/comment number for each top user")
-    ax.set_ylabel(f"Average {args.score_column} per post/comment")
+    ax.set_xlabel("Month")
+    ax.set_ylabel(f"Comments above {args.threshold:g} toxicity")
     ax.set_ylim(bottom=0)
     ax.grid(True, color="#E2E2E2", linewidth=0.8)
     ax.legend(frameon=True)
+    ax.text(
+        1,
+        -0.14,
+        (
+            f"Months plotted: {len(summary):,}; "
+            f"toxic comments: {int(summary['toxic_comment_count'].sum()):,}"
+        ),
+        transform=ax.transAxes,
+        ha="right",
+        va="top",
+        fontsize=9,
+        color="#555555",
+    )
 
+    fig.autofmt_xdate()
     fig.tight_layout()
     fig.savefig(output_png)
     plt.close(fig)
 
     print(f"Saved {output_png}")
-    print(f"Post/comment numbers plotted: {len(per_post)}")
+    print(f"Months plotted: {len(summary)}")
+    print(f"Toxic comments counted: {int(summary['toxic_comment_count'].sum()):,}")
     print(
         ranking[
             ["rank", "username", "average_toxicity", "comment_count"]

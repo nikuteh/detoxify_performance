@@ -87,8 +87,8 @@ python -u scripts/community/processing/split_csv_by_active_users.py \
 
 python -u scripts/community/processing/rank_users_by_average_toxicity.py \
   "$USERS_DIR" \
-  --output "${USERS_DIR}/top_10_average_toxicity.csv" \
-  --top-n 10
+  --output "${USERS_DIR}/top_30_average_toxicity.csv" \
+  --top-n 30
 
 python -u scripts/community/visualization/plot_toxicity_over_time.py \
   "$PREDICTIONS_CSV" \
@@ -107,9 +107,11 @@ python -u scripts/community/visualization/plot_posts_over_time.py \
 
 python -u scripts/community/visualization/plot_top_toxic_users_average_toxicity.py \
   "$USERS_DIR" \
-  --output "${VIS_DIR}/top_10_average_toxicity_per_post_scatter.png" \
-  --top-n 10 \
-  --min-users-per-post 1
+  --output "${VIS_DIR}/top_30_toxic_comment_volume_over_time.png" \
+  --summary-output "${DATA_DIR}/${COMMENTS_BASE}_top_30_toxic_comment_volume_over_time.csv" \
+  --top-n 30 \
+  --threshold "$THRESHOLD" \
+  --time-bin "${TOP_TOXIC_USERS_TIME_BIN:-MS}"
 
 python -u scripts/community/visualization/plot_top_users_toxicity_by_post_number.py \
   "$PREDICTIONS_CSV" \
