@@ -353,6 +353,7 @@ def summarize_reply_dynamics(
         "dogpiling_parent_count": np.nan,
         "dogpiling_percent_of_all_parent_comments": np.nan,
         "dogpiling_percent_of_replied_parent_comments": np.nan,
+        "percent_dogpiling_parent_comments_toxic": np.nan,
     }
     if not comment_id_column or not parent_id_column:
         return empty
@@ -427,11 +428,16 @@ def summarize_reply_dynamics(
         .agg(
             toxic_direct_replies=("child_above_threshold", "sum"),
             total_direct_replies=("child_toxicity", "size"),
+            parent_above_threshold=("parent_above_threshold", "first"),
         )
         .reset_index()
     )
-    dogpiling_parent_count = int(
-        (toxic_reply_counts["toxic_direct_replies"] >= dogpile_min_toxic_replies).sum()
+    dogpiling_parents = toxic_reply_counts[
+        toxic_reply_counts["toxic_direct_replies"] >= dogpile_min_toxic_replies
+    ].copy()
+    dogpiling_parent_count = len(dogpiling_parents)
+    toxic_dogpiling_parent_count = int(
+        dogpiling_parents["parent_above_threshold"].sum()
     )
     replied_parent_comments = len(toxic_reply_counts)
     all_parent_comments = len(parents)
@@ -452,6 +458,10 @@ def summarize_reply_dynamics(
         "dogpiling_percent_of_replied_parent_comments": safe_percent(
             dogpiling_parent_count,
             replied_parent_comments,
+        ),
+        "percent_dogpiling_parent_comments_toxic": safe_percent(
+            toxic_dogpiling_parent_count,
+            dogpiling_parent_count,
         ),
     }
 
@@ -693,6 +703,70 @@ def plot_category_heatmap(summary, metrics, output_png, title):
     return True
 
 
+def plot_category_grouped_bars(summary, metrics, output_png, title):
+    plot_metrics = [metric for metric in metrics if metric in summary.columns]
+    plot_data = summary.dropna(subset=plot_metrics, how="all").copy()
+    if plot_data.empty or not plot_metrics:
+        return False
+
+    plot_data = plot_data.sort_values("percent_toxic_comments", ascending=True)
+
+    plt = configure_matplotlib()
+    output_png.parent.mkdir(parents=True, exist_ok=True)
+
+    labels = plot_data["subreddit"].astype(str).tolist()
+    y = np.arange(len(plot_data))
+    height = min(0.12, 0.82 / max(1, len(plot_metrics)))
+    offsets = (np.arange(len(plot_metrics)) - (len(plot_metrics) - 1) / 2) * height
+    colors = [
+        "#E45756",
+        "#4C78A8",
+        "#F58518",
+        "#54A24B",
+        "#B279A2",
+        "#72B7B2",
+        "#8C6D31",
+    ]
+
+    fig_height = max(6.5, 0.75 * len(plot_data) + 2)
+    fig, ax = plt.subplots(figsize=(15, fig_height), dpi=160)
+    ax.set_facecolor("#FAFAFA")
+    fig.patch.set_facecolor("white")
+
+    max_value = 0
+    for index, metric in enumerate(plot_metrics):
+        values = plot_data[metric].to_numpy(dtype=float)
+        finite_values = values[np.isfinite(values)]
+        if len(finite_values):
+            max_value = max(max_value, float(finite_values.max()))
+        label = (
+            metric.replace("percent_", "")
+            .replace("_above_threshold", "")
+            .replace("_", " ")
+        )
+        ax.barh(
+            y + offsets[index],
+            values,
+            height=height,
+            color=colors[index % len(colors)],
+            edgecolor="white",
+            label=label,
+        )
+
+    ax.set_title(title, pad=12)
+    ax.set_xlabel("Percent of comments above threshold")
+    ax.set_ylabel("Subreddit")
+    ax.set_yticks(y)
+    ax.set_yticklabels(labels)
+    ax.set_xlim(0, max_value * 1.15 if max_value else 1)
+    ax.grid(True, axis="x", color="#E2E2E2", linewidth=0.8)
+    ax.legend(frameon=True, loc="center left", bbox_to_anchor=(1.01, 0.5))
+    fig.tight_layout()
+    fig.savefig(output_png)
+    plt.close(fig)
+    return True
+
+
 def make_plots(summary, plot_dir):
     plot_dir.mkdir(parents=True, exist_ok=True)
     outputs = []
@@ -753,6 +827,24 @@ def make_plots(summary, plot_dir):
         if plot_horizontal_bars(summary, metric, output, title, xlabel, color):
             outputs.append(output)
 
+    dogpiling_metrics = [
+        "dogpiling_percent_of_replied_parent_comments",
+        "percent_dogpiling_parent_comments_toxic",
+    ]
+    output = plot_dir / "all_communities_dogpiling_rate_and_toxic_parents.png"
+    if plot_grouped_bars(
+        summary,
+        dogpiling_metrics,
+        output,
+        "Dogpiling Rate and Toxic Dogpiled Parents by Community",
+        "Percent",
+        legend_labels={
+            "dogpiling_percent_of_replied_parent_comments": "Dogpiling rate",
+            "percent_dogpiling_parent_comments_toxic": "Dogpiled parents toxic",
+        },
+    ):
+        outputs.append(output)
+
     concentration_metrics = [
         "top_1_percent_users_share_of_toxic_comments",
         "top_5_percent_users_share_of_toxic_comments",
@@ -798,6 +890,15 @@ def make_plots(summary, plot_dir):
     ]
     output = plot_dir / "all_communities_toxicity_category_rates.png"
     if plot_category_heatmap(
+        summary,
+        category_metrics,
+        output,
+        "Detoxify Category Rates by Community",
+    ):
+        outputs.append(output)
+
+    output = plot_dir / "all_communities_toxicity_category_rates_bars.png"
+    if plot_category_grouped_bars(
         summary,
         category_metrics,
         output,

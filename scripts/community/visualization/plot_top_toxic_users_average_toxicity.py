@@ -2,6 +2,7 @@ import argparse
 import os
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 
@@ -14,7 +15,8 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description=(
             "Rank top users in a subreddit folder by average toxicity, then "
-            "plot the volume of toxic comments from those users over time."
+            "plot toxic-comment volume from those users over time as a "
+            "scatter plot with a linear regression line."
         )
     )
     parser.add_argument(
@@ -246,6 +248,7 @@ def main():
 
     matplotlib.use("Agg")
 
+    import matplotlib.dates as mdates
     import matplotlib.pyplot as plt
 
     ranking = top_users_by_average_toxicity(
@@ -271,18 +274,45 @@ def main():
     ax.set_facecolor("#FAFAFA")
     fig.patch.set_facecolor("white")
 
-    ax.plot(
-        summary["date"],
-        summary["toxic_comment_count"],
+    plot_dates = pd.to_datetime(summary["date"]).dt.tz_convert(None)
+    x_positions = np.arange(len(summary), dtype=float)
+    y = summary["toxic_comment_count"].to_numpy(dtype=float)
+    contributing_users = summary["contributing_users"].to_numpy(dtype=float)
+    if contributing_users.min() == contributing_users.max():
+        sizes = np.full_like(contributing_users, 80.0)
+    else:
+        sizes = np.interp(
+            contributing_users,
+            (contributing_users.min(), contributing_users.max()),
+            (45, 180),
+        )
+
+    ax.scatter(
+        plot_dates,
+        y,
+        s=sizes,
+        alpha=0.82,
         color="#E45756",
-        linewidth=2.6,
-        marker="o",
-        markersize=4,
-        markerfacecolor="#F58518",
-        markeredgecolor="white",
-        markeredgewidth=0.7,
+        edgecolors="white",
+        linewidths=1.2,
         label=f"Comments above {args.threshold:g} toxicity",
     )
+
+    if len(summary) >= 2 and np.unique(x_positions).size >= 2:
+        slope, intercept = np.polyfit(x_positions, y, 1)
+        x_line = np.linspace(x_positions.min(), x_positions.max(), 200)
+        y_line = slope * x_line + intercept
+        date_numbers = mdates.date2num(plot_dates)
+        line_dates = pd.to_datetime(
+            mdates.num2date(np.interp(x_line, x_positions, date_numbers))
+        ).tz_convert(None)
+        ax.plot(
+            line_dates,
+            y_line,
+            color="#4C78A8",
+            linewidth=2.4,
+            label=f"Regression ({slope:+.2f} toxic comments per {args.time_bin})",
+        )
 
     subreddit_name = infer_subreddit_name(args.user_csv_folder)
     ax.set_title(
